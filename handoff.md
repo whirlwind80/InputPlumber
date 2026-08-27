@@ -17,7 +17,12 @@
 
 **HOME 버튼(짧게 Meta+D / 길게 Ctrl+Alt+KP.): 08-26에 매핑 완료, 실기기 검증 + 커밋 + push + PR 코멘트까지 완료.** 자세한 내용은 아래 "★ 2026-08-26 세션 핵심 발견" 참고. 08-25까지의 "미매핑 유지" 결정은 이걸로 뒤집혔다. **다만 이 매핑도 08-26 두 번째 리뷰에서 pastaq가 재반박함 — 08-27에 실기기로 재검증해서 반박 근거 확보, 아래 참고.**
 
-**PR #668: 08-26 요약("6건 전부 반영, 완료")도 틀렸었음 — 08-26 17:23에 pastaq가 후속 리뷰로
+**PR #668: 08-27 12:04 UTC에 pastaq가 APPROVED로 전환함 — 바로 이어서 "Reminder for me to squash
+merge this PR" 코멘트 남김, 본인이 직접 병합할 예정으로 보임. CI는 `Run tests` SUCCESS, x86_64/
+aarch64 build는 그 시점 IN_PROGRESS(그래서 mergeStateStatus가 일시적으로 UNSTABLE). 우리 쪽에서
+더 할 일 없음 — 병합 여부만 확인하면 됨.**
+
+**(구) PR #668: 08-26 요약("6건 전부 반영, 완료")도 틀렸었음 — 08-26 17:23에 pastaq가 후속 리뷰로
 `hid_report.rs` line 10의 `packed_struct::prelude::*` 와일드카드 import를 추가로 지적("Seems
 another one snuck in")했는데 반영이 안 돼 있었음. 08-27에 발견해서 즉시 named import로 고치고
 커밋 `3389ed7` push 완료.** pastaq의 리뷰 상태 자체는 08-26 17:23 리뷰(COMMENTED)로 이미
@@ -223,6 +228,13 @@ gamepad evdev name이 event2/5/6에 전부 매칭되어 CompositeDevice 3개 생
 ---
 
 ## 다음 세션 작업
+
+### -2. PR #668 — pastaq APPROVED (08-27 12:04 UTC), 병합 대기만 남음
+
+"Reminder for me to squash merge this PR" 코멘트로 봐서 pastaq 본인이 직접 머지할 예정. 다음
+세션 시작 시 `gh pr view 668 --repo ShadowBlip/InputPlumber --json state,mergedAt`로 머지 여부만
+확인하면 됨 — 병합됐으면 이 리포의 로컬 override(`/etc/inputplumber/...`)는 그대로 유지, upstream
+버전이 배포에 반영되기 전까지는 CLAUDE.md 안내대로 계속 override로 운용.
 
 ### -1. ★★ 최우선 — pastaq 08-27 답변에 대한 실기기 검증 3건 (2026-08-27 오후 세션에서 코드 분석만 완료, 실기기 테스트는 미착수 — "내일 할게요"로 보류됨)
 
