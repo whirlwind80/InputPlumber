@@ -2,6 +2,13 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
+> **Fork-only file — do not upstream.** This file and `handoff.md` live only on the `claude` branch
+> of this fork (whirlwind80/InputPlumber) and must never be merged, cherry-picked, or otherwise
+> included in a PR/branch destined for `upstream` (ShadowBlip/InputPlumber). They contain
+> machine-specific dev notes, not project documentation. Feature/PR branches (e.g.
+> `fix/zotac-zone-*`) must branch from `main`, not from `claude`, and `claude` must never be merged
+> into them.
+
 ## What this is
 
 InputPlumber is a Rust daemon for Linux that combines multiple physical input devices (gamepads,
