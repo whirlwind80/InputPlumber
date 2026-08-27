@@ -2,9 +2,13 @@
 
 ## 상태 요약 (최신, 2026-08-27)
 
-**PR #664: pastaq로부터 CHANGES_REQUESTED 2회(08-25, 08-26) — "손댈 필요 없음"이었던 08-26 요약은 틀렸음, 정정함.**
+**PR #664: pastaq가 08-27 12:01 UTC에 답변함 — PR을 계속 진행하기로 함, 접을 필요 없음.**
+아래 "★ 2026-08-27 오후: pastaq 답변 및 다음 액션" 섹션 참고. **다음 세션은 여기부터 시작할 것**
+(실기기 테스트 3건 미착수).
+
+**(구) PR #664: pastaq로부터 CHANGES_REQUESTED 2회(08-25, 08-26) — "손댈 필요 없음"이었던 08-26 요약은 틀렸음, 정정함.**
 08-27에 실기기 재검증 + 코드 근거로 종합 반박 코멘트를 작성해 게시 완료. 자세한 내용은 아래
-"★ 2026-08-27 세션" 참고. pastaq 응답 대기 중 — **다음 세션은 여기부터 확인할 것.**
+"★ 2026-08-27 세션" 참고.
 
 **패들: 해결 → 구현 → Steam Game Mode 검증 → 커밋 완료.** 08-24 세션의 진단이 틀렸다는 것이 08-25 실측으로 확정됐고, 진짜 원인과 해결책을 찾아 코드로 구현한 뒤 실기기에서 전부 검증했다.
 
@@ -219,6 +223,62 @@ gamepad evdev name이 event2/5/6에 전부 매칭되어 CompositeDevice 3개 생
 ---
 
 ## 다음 세션 작업
+
+### -1. ★★ 최우선 — pastaq 08-27 답변에 대한 실기기 검증 3건 (2026-08-27 오후 세션에서 코드 분석만 완료, 실기기 테스트는 미착수 — "내일 할게요"로 보류됨)
+
+pastaq가 08-27 12:01 UTC 코멘트(https://github.com/ShadowBlip/InputPlumber/pull/664#issuecomment-5438753815)에서
+**PR을 계속 진행하기로 확정**하고 아래 3가지를 요청함.
+다이얼 건은 pastaq 본인 착각이었다고 인정했으므로 추가 조치 불필요.
+
+**1) HOME/QAM 매핑을 `inputplumber device 0 test`로 직접 검증**
+
+pastaq는 OpenGamepadUI 같은 "부실한 userspace 스택"을 거치지 말고 InputPlumber 자체 테스트
+TUI로 확인하라고 요청함 (`src/cli/device.rs`의 `DeviceCommand::Test` → `DeviceTestMenu`, DBus로
+실행 중인 데몬에 붙어서 라이브 capability 이벤트를 보여줌 — 데몬을 stop/mask할 필요 없음, sudo도
+불필요할 가능성 높음). 실행:
+```
+flatpak-spawn --host inputplumber devices list      # Zotac Zone의 CompositeDevice 번호 확인
+flatpak-spawn --host inputplumber device <N> test    # TUI에서 HOME 짧게/길게, MORE(F17) 눌러보기
+```
+
+**2) 5초 파워메뉴의 원인 규명 — `libinput debug-events` + `evtest` (mask 필요, sudo)**
+
+pastaq 추측: "LEFTMETA+D가 powerbuttond에 감지된 것"(HOME 길게 chord가 아니라 시스템 레벨 동작).
+CLAUDE.md "Debugging input pipeline issues on real hardware" 섹션의 grab-release 절차 그대로:
+```
+sudo systemctl mask inputplumber && sudo systemctl stop inputplumber
+# 터미널 두 개에서 동시에:
+sudo libinput debug-events
+sudo evtest
+# HOME 5초 길게 눌러서 관찰
+sudo systemctl unmask inputplumber && sudo systemctl start inputplumber
+```
+
+**3) 터치패드 `source_devices` entry(그룹 `mouse`, evdev name glob `{ZOTAC Gaming Zone
+Mouse,ZOTAC Gaming Zone Dials,Zotac Technology Limited ZOTAC GAMING ZONE Mouse}`) 제거 검토**
+
+pastaq 질문: "다른 버튼이 그 evdev로 안 지나간다면 grab 자체가 불필요하지 않은가."
+
+★ 코드/히스토리 분석 완료 (2026-08-27 오후, 실기기 테스트는 아직):
+- 이 entry엔 `capability_map_id`가 없음 — 순수 passthrough (번역 없이 그대로 InputPlumber의
+  가상 `mouse` target으로 전달).
+- 이 entry가 존재하는 근본 이유는 **pastaq 본인이 작성한 PR #410**("Fix(Hardware Support):
+  Passthrough Zotac Zone Touchpads", 커밋 `0da2482`)과 직결됨 — 그 커밋 메시지: *"rel events
+  produced have no target device to emit from"*. 즉 grab을 안 하면 REL 이벤트를 받아줄 target이
+  없어서 터치패드가 SteamOS에서 동작 안 했다는 게 원래 문제였고, 이 config의
+  `target_devices: [xbox-elite, mouse, keyboard]`에 `mouse`가 포함된 것도 이 문제 해결용으로 보임.
+- 다만 PR #410 당시엔 "ZOTAC Gaming Zone Mouse"(포인터)와 "ZOTAC Gaming Zone Dials"(스크롤,
+  현재는 "왼쪽 터치패드"로 정정된 그 이름)가 **서로 다른 evdev 노드**였던 것으로 보이는데, 이
+  기기(hid-generic 전용, 벤더 드라이버 없음)에서는 왼쪽 스크롤 터치패드와 오른쪽 포인터
+  터치패드가 **하나의 evdev 노드(event4)로 합쳐져** 나오는 것으로 보임(CLAUDE.md Hardware
+  reference 참고: `event4` = "...ZONE Mouse" (`REL_X`/`REL_Y`/`REL_WHEEL`/`REL_HWHEEL`) 전부 한
+  노드).
+- **결론: 코드만으로는 판단 불가.** 두 가지 옵션이 있음: (a) 현행대로 grab 유지 → InputPlumber의
+  가상 mouse target을 거쳐 나감, (b) entry 제거 → PR #410 원래 방식대로 grab 안 하고 네이티브로
+  노출. 이 기기에선 두 터치패드가 한 노드로 합쳐져 있어서 (b)로도 포인터+스크롤이 그대로 동작할
+  가능성이 있지만, 실기기 A/B 테스트(entry 주석 처리 → 데스크톱/Gaming Mode 둘 다에서 포인터
+  이동 + 왼쪽 터치패드 스크롤 확인, Steam Input이 이 장치를 이상하게 인식하지 않는지도 확인) 전에는
+  결론 낼 수 없음.
 
 ### 0. ★ 최우선 — PR 코드 라인별 설명 듣기 (사용자 요청)
 
