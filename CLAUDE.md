@@ -195,10 +195,10 @@ protocol handling (e.g. hidraw report parsing) rather than plain evdev passthrou
 
 This checkout is used to fix input handling on the Zotac Gaming Zone (G0A1W) it runs on. Two PRs
 are open upstream and, until both land in an installed Bazzite image, the device depends on local
-workarounds that need occasional attention. Full background is in `handoff.md` (local-only, not in
-git) — that file is a running session-to-session handoff log (current PR/review status, in-progress
-experiments, next-session TODOs); durable facts about the codebase or this device belong here
-instead.
+workarounds that need occasional attention. Full background is in `handoff.md` (tracked on this
+fork's `claude` branch only — see the fork-only note at the top; it is *not* untracked) — that file
+is a running session-to-session handoff log (current PR/review status, in-progress experiments,
+next-session TODOs); durable facts about the codebase or this device belong here instead.
 
 ### Development environment on this machine
 
@@ -239,9 +239,33 @@ than the repo. Note the `.d` suffix: overrides are only read from `devices.d/` a
 evdev nodes (interface 1): `event2`/`event5`/`event6` = bare "...ZOTAC GAMING ZONE" (limited,
 duplicate-composite-device trap fixed by adding `phys_path`); `event3` = "...ZONE Keyboard" (F16-F24,
 `KEY_HOME`/`KEY_END` paddles once remapped, the real HOME chords); `event4` = "...ZONE Mouse"
-(`REL_X`/`REL_Y`/`REL_WHEEL`/`REL_HWHEEL`); `event14`/`js0` = "ZOTAC Gaming Zone" (kernel `xpad`,
-interface 1.0) — the real gamepad functionality (sticks/ABXY/shoulders/triggers/D-pad) lives here
-and must be a `source_devices` entry or Steam reads it raw, ungrabbed.
+(`REL_X`/`REL_Y`/`REL_WHEEL`/`REL_WHEEL_HI_RES` — **no `REL_HWHEEL`**; confirmed 2026-08-28 via
+`evtest`'s declared-capabilities list and a live capture of a deliberately horizontal stroke on the
+left pad: only `REL_WHEEL` ever fires, so this hardware has no genuine horizontal-scroll axis at
+all — a prior version of this doc claimed `REL_HWHEEL` existed here, which was wrong); `event14`/
+`js0` = "ZOTAC Gaming Zone" (kernel `xpad`, interface 1.0) — the real gamepad functionality
+(sticks/ABXY/shoulders/triggers/D-pad) lives here and must be a `source_devices` entry or Steam
+reads it raw, ungrabbed. Node numbers are not stable across reboots/replugs (observed as `event10`
+on 2026-08-28) — match by `phys_path`/name, never assume a fixed number.
+
+**Separate InputPlumber core bug (not Zotac-specific), found while investigating the above**: in
+`src/input/event/evdev.rs`, `EvdevEvent::as_capability()` maps *both* `REL_WHEEL` and `REL_HWHEEL`
+to the same `Capability::Mouse(Mouse::Wheel)`, and `get_value()` returns a bare `InputValue::Float`
+for either (not a `Vector2`), so the source axis is lost. On output, `event_codes_from_capability`
+for `Mouse::Wheel` lists *both* `REL_WHEEL` and `REL_HWHEEL`, and the `Float` value gets written to
+whichever code is being emitted — so every `Mouse::Wheel` event a source produces is mirrored onto
+*both* output axes with the same magnitude, regardless of which axis it actually came from. On any
+device with real independent `REL_WHEEL`/`REL_HWHEEL` this would make every vertical scroll tick
+inject a phantom horizontal one and vice versa. Worth a separate upstream issue; out of scope for
+the Zotac Zone PRs.
+
+⚠️ **The code bug above is real (read directly from the source), but do not use it to explain the
+"scrolling goes sideways/diagonally" feel on this device — that link was tested on 2026-08-28 and
+ruled out.** The same behaviour persists with the `group: mouse` entry removed entirely, i.e. with
+InputPlumber nowhere in the path. The actual cause is the pad itself: it only ever emits `REL_WHEEL`,
+and swiping *across* the strip's own axis makes it emit vertical ticks in an erratic mixed up/down
+direction (clearly visible as alternating `+1`/`-1` in the raw captures) rather than nothing. That
+erratic vertical scrolling is what reads as "wrong direction". Cite the code bug from the code only.
 
 Button → signal facts:
 - Steam button → `KEY_F17` (hidraw0 rid=2: `02 09 00 6c`) → `Guide`
@@ -259,7 +283,9 @@ Button → signal facts:
   **Do not** attach a dial-targeting capability_map (`REL_HWHEEL`/`REL_WHEEL` → dial capability) to
   the *touchpad's* `source_devices` entry, or to any entry whose `evdev.name` glob also matches the
   touchpad. The left touchpad (a scroll-only surface, separate from the right pointer touchpad)
-  emits genuine `REL_WHEEL`/`REL_HWHEEL` of its own. `capability_map_id` on a `source_devices` entry
+  emits genuine `REL_WHEEL` of its own (only `REL_WHEEL` — no `REL_HWHEEL` on this hardware; see the
+  corrected node note above and the related InputPlumber core Wheel-duplication bug it explains).
+  `capability_map_id` on a `source_devices` entry
   builds a translator scoped to *that entry's own* events (see the capability_map note in
   Architecture above) — so this isn't a device-wide leak, but if that entry is the touchpad (or a
   name glob that resolves to the touchpad on hardware without the vendor module), its own

@@ -1,10 +1,23 @@
 # InputPlumber Zotac Gaming Zone 버그 수정 - 작업 인계 문서
 
-## 상태 요약 (최신, 2026-08-27)
+## 상태 요약 (최신, 2026-08-28)
 
-**PR #664: pastaq가 08-27 12:01 UTC에 답변함 — PR을 계속 진행하기로 함, 접을 필요 없음.**
-아래 "★ 2026-08-27 오후: pastaq 답변 및 다음 액션" 섹션 참고. **다음 세션은 여기부터 시작할 것**
-(실기기 테스트 3건 미착수).
+**PR #664: pastaq가 요청한 실기기 검증 3건 전부 완료 + 답변 게시 완료 (2026-08-28T12:54:36Z,
+https://github.com/ShadowBlip/InputPlumber/pull/664#issuecomment-5452750998). 이제 pastaq 응답
+대기 중.** 상세는 아래 "★ 2026-08-28 세션" 참고. **다음 세션은 pastaq가 이 코멘트에 답했는지
+확인하는 것부터 시작할 것.**
+
+**⚠️ 지금 `/etc/inputplumber/devices.d/50-zotac-zone.yaml`은 터치패드(`group: mouse`) entry가
+제거된 상태로 배포돼 있음.** 리포 작업트리도 같은 상태지만 **커밋은 안 함** — pastaq 확인 후
+커밋하기로 사용자가 결정. 즉 이 시점의 배포 config는 PR #664 브랜치의 커밋된 내용과 다름.
+
+**PR #668: 08-28 확인 시점에도 여전히 OPEN, 미병합.** CI 3종 전부 SUCCESS,
+`mergeStateStatus: CLEAN`(08-27 시점의 UNSTABLE에서 해소됨). pastaq의 "Reminder for me to squash
+merge this PR"(08-27 12:05 UTC) 이후 PR에 아무 활동 없음 — 막힌 게 아니라 리뷰어가 아직 실행을
+안 한 것. 우리 쪽 액션 없음, 병합 여부만 확인하면 됨.
+
+**(구) PR #664: pastaq가 08-27 12:01 UTC에 답변함 — PR을 계속 진행하기로 함, 접을 필요 없음.**
+아래 "★ 2026-08-27 오후: pastaq 답변 및 다음 액션" 섹션 참고. (08-28에 실기기 테스트 3건 완료함)
 
 **(구) PR #664: pastaq로부터 CHANGES_REQUESTED 2회(08-25, 08-26) — "손댈 필요 없음"이었던 08-26 요약은 틀렸음, 정정함.**
 08-27에 실기기 재검증 + 코드 근거로 종합 반박 코멘트를 작성해 게시 완료. 자세한 내용은 아래
@@ -236,7 +249,8 @@ gamepad evdev name이 event2/5/6에 전부 매칭되어 CompositeDevice 3개 생
 확인하면 됨 — 병합됐으면 이 리포의 로컬 override(`/etc/inputplumber/...`)는 그대로 유지, upstream
 버전이 배포에 반영되기 전까지는 CLAUDE.md 안내대로 계속 override로 운용.
 
-### -1. ★★ 최우선 — pastaq 08-27 답변에 대한 실기기 검증 3건 (2026-08-27 오후 세션에서 코드 분석만 완료, 실기기 테스트는 미착수 — "내일 할게요"로 보류됨)
+### -1. ~~pastaq 08-27 답변에 대한 실기기 검증 3건~~ → **2026-08-28에 3건 전부 완료, 답변 게시함.**
+결과는 "★ 2026-08-28 세션" 섹션이 정본. 아래 내용은 당시 계획/배경 기록으로만 남김.
 
 pastaq가 08-27 12:01 UTC 코멘트(https://github.com/ShadowBlip/InputPlumber/pull/664#issuecomment-5438753815)에서
 **PR을 계속 진행하기로 확정**하고 아래 3가지를 요청함.
@@ -576,6 +590,126 @@ HOME/QAM 실측 결과 3가지 + 다이얼 capability_map 정정된 근거 + 이
 **다음 세션에서 가장 먼저 할 일: pastaq가 이 08-27 코멘트에 응답했는지 확인.**
 
 ---
+
+## ★ 2026-08-28 세션 — pastaq 요청 검증 3건 완료 및 답변 게시
+
+### 0. 결과 요약
+
+pastaq의 08-27 12:01 코멘트가 요청한 3가지를 전부 실기기에서 검증하고, 영어 코멘트를 작성해
+사용자가 직접 게시함 (2026-08-28T12:54:36Z, issuecomment-5452750998). 이후 마크다운 서식이
+깨진 걸 발견해 코멘트를 수정함(내용 동일, 서식만 복원).
+
+### 1. `inputplumber device 0 test` — 전체 버튼 스윕
+
+- **결과**: South/East/North/West(ABXY), D-pad 4방향, LB/RB, L3/R3, Select/Start, ZOTAC버튼(Guide),
+  HOME 길게(Guide) — **전부 정상 반응**.
+- **`Screenshot`/`QuickAccess`는 이 도구로 확인 불가**(박스 자체가 안 뜸). 코드로 확인한 이유:
+  TUI의 Buttons 패널은 `composite_device::get_capabilities()`(= 각 소스의 **원시 선언
+  capability** 합집합)로 채워지는데, `KeyboardEventDevice::get_capabilities()`
+  (`src/input/source/evdev/keyboard.rs:143`)는 `device.supported_events()`/`supported_keys()`만
+  순회해 `EvdevEvent::as_capability()`로 변환할 뿐 **translator를 전혀 참조하지 않음**.
+  `SourceDriver::get_capabilities()`(`source/mod.rs:326`)의 event filter도 빼기만 하고 더하지
+  않음. 즉 chord 번역 **결과물로만** 존재하는 capability는 구조상 이 패널에 나올 수 없음.
+- `device test`가 로드하는 `profiles/debug.yaml`은 `mapping: []` 빈 프로파일이라 리매핑 원인 아님
+  (혹시나 해서 확인함).
+- **간접 증거**: HOME 길게가 `Guide` 박스를 반응시킴 — 짧게 매핑(`Screenshot`)과 **동일한 chord
+  번역 파이프라인**이고 다만 원시 capability이기도 한 값으로 귀결된 것.
+
+### 2. 5초 파워메뉴 — LEFTMETA 유출설 반증
+
+- `evtest`(키 식별 가능) 캡처: 누르는 내내 `KEY_LEFTCTRL`+`KEY_LEFTALT`+`KEY_KPDOT`만
+  (KPDOT auto-repeat), **`KEY_LEFTMETA`는 단 한 번도 없음**.
+- ⚠️ **`libinput debug-events`는 키코드를 `***`로 마스킹하므로 키 식별 증거가 될 수 없음.**
+  개수/타이밍(7.905초간 키 3개)만 뒷받침. 처음 초안에 "두 캡처 모두에서 LEFTMETA 없음"이라고
+  썼다가 게시 전 검증에서 잡아 수정함 — pastaq가 직접 추천한 도구라 이 부정확은 위험했음.
+- **분리 실험**: InputPlumber 꺼짐 → 파워메뉴 안 뜸(2회 확인) / InputPlumber 켜짐(`HOME 길게 →
+  Guide`) → 파워메뉴 뜸(**1회만** 확인). 초안의 "reliably appears"는 과장이라 "observed once"로 수정.
+- **steamos-manager 인과관계는 미확정**: DBus 연동 사실(`ResetInterceptModes` 호출, 자체 가상
+  입력 장치 등록)은 확인했으나, 파워메뉴를 띄운 주체라는 **직접 로그 증거는 못 찾음**
+  (해당 시간대 `journalctl -u steamos-manager` → "No entries"). 코멘트에도 추정임을 명시함.
+- 결론: raw 키가 아니라 **가상 Guide 버튼 홀드**가 트리거. 매핑 버그가 아니라 의도대로 동작한 것.
+
+### 3. 터치패드 entry 제거 — 안전함 확인 (커밋은 보류)
+
+- entry 제거(native/ungrabbed) 상태에서 데스크톱 + **Gaming Mode 양쪽** 검증: 오른쪽 패드 포인터
+  정상, 왼쪽 패드 세로 스크롤 정상, Gaming Mode 기존 버튼 전부 회귀 없음.
+- **이 터치패드는 `REL_WHEEL`만 보냄** — `evtest` 2회(가로로만 문지르기 / 좌↔우 반복) 모두
+  `REL_HWHEEL` 전무. 추가로 `HIDIOCGRDESC`로 **HID 리포트 디스크립터를 직접 파싱**해서 하드웨어
+  레벨로 확정: rid=4는 `size=8 count=3`(정확히 3바이트) = `X`/`Y`/`Wheel`뿐이라 4번째 축이 들어갈
+  자리가 없고, "AC Pan"(Consumer `0x238`)은 디스크립터 전체 어디에도 없음. 즉 hid-generic/OS의
+  해석 한계가 아니라 **펌웨어가 애초에 가로 스크롤 데이터를 안 보냄**.
+  - 이 파싱에 쓴 스크립트를 새로 작성함: `~/zotac-zone-tools/rdesc_usage.py` (기존 `rdesc.py`는
+    usage를 안 보여주고 리포트 크기만 출력함). ⚠️ 이 스크립트의 usage_page 라벨은 부정확함
+    (rid=3을 "Generic Desktop"으로 표시하지만 실제 usage 값들은 Consumer 페이지) — usage 목록
+    자체는 전부 열거되므로 "0x238 없음" 결론에는 영향 없으나, 페이지 이름은 신뢰하지 말 것.
+- **커밋 안 함**: pastaq가 먼저 제거를 제안했지만, 원 작성자(#410)의 확인을 받고 커밋하기로
+  사용자가 결정. 작업트리와 `/etc` 배포본에만 반영된 상태.
+
+### 4. 이번 세션에서 새로 밝혀진 함정/사실 (다음 세션 필독)
+
+- **`inputplumber device N test`를 `~/InputPlumber` 안에서 실행하면 실패한다**:
+  `Error: Failed("service encountered an error processing the request: Could not read: No such file
+  or directory (os error 2)")`. 원인은 `config::path::get_profiles_path()`가 상대경로
+  `./rootfs/usr/share/inputplumber/profiles`를 먼저 반환하고, CLI가 그 문자열을 그대로 데몬에
+  넘기는데 **데몬의 cwd가 달라서** 못 읽는 것. **리포 밖(`cd ~`)에서 실행할 것.**
+- **게임패드 소스(event10)가 죽은 채 복구가 안 되는 현상을 실제로 겪음.** USB 재열거
+  (`inotify DELETE`→`CREATE`) 직후 InputPlumber가 다시 열다가
+  `Failed to fetch events: Os { code: 19 ... "No such device" }`(ENODEV) → `Detected source device
+  stopped` 후 재시도 없음. 그 결과 `SourceDevicePaths`에 event10이 빠져서 **`device test`에서
+  게임패드 버튼이 하나도 안 눌리는** 상태가 됨(처음엔 매핑 문제로 오인함). `systemctl restart
+  inputplumber`로 복구. **upstream 이슈감** — 증상이 "컨트롤러가 갑자기 안 됨"으로 나타남.
+- **`device test`에서 X→`North`, Y→`West`로 보이는 건 정상이다.** 리눅스 `BTN_NORTH`/`BTN_WEST`
+  관례가 직관과 반대(North=Xbox X, West=Xbox Y). `capability.rs`의 주석
+  (`North action, ... Xbox X`)이 맞는 설명임. 세션 중 이걸 버그로 오판하고 raw evtest까지 떠서
+  "커널이 뒤바꿔 보고한다"고 결론냈다가, **사용자가 "Eden 등 에뮬에서도 정상"이라고 반증해서
+  철회함** — Steam/Eden 둘 다 InputPlumber의 가상 출력을 읽으므로 둘 다 정상이면 출력이 맞는 것.
+- **node 번호가 또 바뀌었다**: 게임패드가 `event14` → **`event10`**. 이름/`phys_path`로 찾을 것.
+- **`~/zotac-zone-tools/getcmd.py`의 `GET_DEVICE_INFO` 오프셋 버그를 고침** (`resp[5:]` →
+  `resp[6:]`). 고치기 전엔 `vid:pid e900:901e`, `fw 0.1.3` 같은 한 바이트 밀린 쓰레기값이 나왔음.
+  수정 후 `vid:pid = 1ee9:1590`(오프셋이 맞다는 결정적 검증), **`fw 1.3.9`, `hw 1.5.0`** 확인.
+  (`led zones = 0`은 여전히 이상하지만 이 필드만 위치가 다를 수 있음 — 미조사.)
+- **"스크롤이 옆으로/대각선으로 간다"는 느낌의 정체가 밝혀짐 — InputPlumber와 무관.**
+  `group: mouse` entry를 **완전히 제거한**(InputPlumber가 경로에 아예 없는) 상태에서도 같은
+  현상이 그대로 남음. 진짜 원인은 패드 자체: `REL_WHEEL`만 내는데, 스트립의 축과 **다른 방향으로**
+  문지르면 아무것도 안 내는 게 아니라 세로 틱을 **위/아래 무작위로 섞어서** 냄(raw 캡처에서
+  `+1`/`-1`이 번갈아 찍히는 것으로 확인). 이 널뛰는 세로 스크롤이 "방향이 이상하다"로 체감된 것.
+  사용자가 apexcheck.com의 horizontal-scroll-check 페이지로도 가로 신호가 없음을 별도 확인함.
+  ⚠️ **세션 중 내가 "블루투스 마우스가 혼입된 관찰이라 신뢰 불가"라고 잘못 기록했다가 사용자가
+  정정함 — 터치패드 테스트 중 마우스는 움직이지 않았다.** (그 마우스도 가로 스크롤이 이상하다는
+  건 사실이나 Windows에선 정상이며, 이 건과는 무관한 별개 이슈다.)
+  따라서 코드에서 찾은 InputPlumber Wheel 복제 버그(`REL_WHEEL`/`REL_HWHEEL`이 같은
+  `Mouse::Wheel`로 합쳐지고 출력 시 양쪽 코드에 같은 값이 써지는 것 — CLAUDE.md에 기록)는
+  **코드상 실재하지만 이 현상의 원인은 아니다.** 그래서 PR 코멘트 초안에서 해당 문단을 **삭제함**.
+  upstream 이슈로 낼 때는 코드 근거로만 쓸 것.
+- **CONTRIBUTING.md의 AI 조항 범위를 정확히 확인함** (세션 중 내가 잘못 안내했다가 사용자가
+  지적해서 원문 확인): 고지 요구는 **커밋 메시지/코드에 한정**(34-49행, `Co-developed-by:`
+  트레일러). PR 코멘트에는 적용 안 됨. 다만 **54행에 별개 조항**: *"Using AI to respond to human
+  reviewers is strictly prohibited."* — 이건 고지로 면제되는 게 아니라 조건 없는 금지.
+  이번 코멘트에는 이전과 달리 AI 번역 고지 문구를 **넣지 않기로 사용자가 결정**함.
+- **스크린샷은 첨부하지 않기로 함**: `Screenshot_20260828_174352.png`는 터미널 투명도 때문에 TUI
+  뒤로 이 세션의 한국어 대화(테스트 지시 내용 포함)가 읽힐 정도로 비쳐 보임. pastaq가 AI PR에
+  민감하다고 밝힌 직후라 부적절 판단. 필요하면 투명도 없는 깨끗한 화면으로 새로 캡처할 것.
+- **터미널에서 복사해 붙여넣으면 마크다운이 깨진다**: 렌더링된 상태(굵게/백틱 제거, 줄머리 2칸
+  들여쓰기, 문단 중간 강제 줄바꿈)로 붙여짐. 코멘트 Edit으로 원본 마크다운을 다시 붙여 수정함.
+  다음에도 게시용 텍스트는 **파일로 만들어서 `cat`으로 복사**할 것.
+
+### 5. 다음 세션 TODO
+
+1. **pastaq가 08-28 코멘트(issuecomment-5452750998)에 답했는지 확인.**
+2. **PR #668 병합됐는지 확인** (`gh pr view 668 --repo ShadowBlip/InputPlumber --json state,mergedAt`).
+3. pastaq가 터치패드 entry 제거에 확인을 주면 **커밋** (지금은 작업트리/`/etc`에만 반영, 미커밋).
+4. **미착수로 남아있는 것**: PR 코드 라인별 설명 듣기(아래 "다음 세션 작업 0" 참고) — 사용자가
+   여러 세션에 걸쳐 요청했으나 아직 진행 안 됨.
+5. upstream 이슈 후보 3건: Wheel 복제 버그, event10 ENODEV 후 미복구, `devices` vs `devices.d`
+   네이밍 트랩.
+
+### 6. 미커밋 로컬 변경사항 (세션 종료 시점)
+
+- `CLAUDE.md` — event4의 `REL_HWHEEL` 오기 정정(+ 오늘 확인 근거), node 번호 불안정성 경고 추가,
+  Wheel 복제 버그 문단 추가, Dials 항목의 관련 문장 정정.
+- `rootfs/usr/share/inputplumber/devices/50-zotac-zone.yaml` — 터치패드 `group: mouse` entry 주석
+  처리(제거). **pastaq 확인 전까지 커밋 보류.**
+- 리포 밖: `~/zotac-zone-tools/getcmd.py` 오프셋 수정, `~/zotac-zone-tools/rdesc_usage.py` 신규.
 
 ## 참고: 디버깅 기법
 
