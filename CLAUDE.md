@@ -8,6 +8,13 @@ This file provides guidance to Claude Code (claude.ai/code) when working with co
 > machine-specific dev notes, not project documentation. Feature/PR branches (e.g.
 > `fix/zotac-zone-*`) must branch from `main`, not from `claude`, and `claude` must never be merged
 > into them.
+>
+> **Never write `#<number>` in a commit message on the `claude` branch** (e.g. `PR #668`,
+> `issue #655`). GitHub auto-links any `#N`/`ShadowBlip#N` in a commit message pushed to this public
+> fork to that PR/issue's timeline as "referenced this pull request" — even though the commit
+> itself never touches that PR's branch, it makes this candid, unreviewed session log one click away
+> from anyone reading the actual PR (including the upstream reviewer). Write `PR 668` or
+> `issue 655` instead (no `#`).
 
 ## What this is
 
@@ -194,11 +201,20 @@ protocol handling (e.g. hidraw report parsing) rather than plain evdev passthrou
 ## This machine: keeping the Zotac Zone working across updates
 
 This checkout is used to fix input handling on the Zotac Gaming Zone (G0A1W) it runs on. Two PRs
-are open upstream and, until both land in an installed Bazzite image, the device depends on local
-workarounds that need occasional attention. Full background is in `handoff.md` (tracked on this
-fork's `claude` branch only — see the fork-only note at the top; it is *not* untracked) — that file
-is a running session-to-session handoff log (current PR/review status, in-progress experiments,
-next-session TODOs); durable facts about the codebase or this device belong here instead.
+were submitted upstream to fix it in InputPlumber itself, but **both were closed unmerged on
+2026-09-02/09-03** — the reviewer (`pastaq`) decided after real-hardware testing that a
+config/hidraw-level fix can't fully cover this device (the gamepad reportedly fails to enumerate at
+all, without a udev rule for `xpad`, on hardware without the vendor kernel driver present) and that
+the real fix is to ship the vendor kernel driver (`zotac_zone_hid`,
+[OpenZotacZone/ZotacZone-Drivers](https://github.com/OpenZotacZone/ZotacZone-Drivers)) in OGC
+(Universal Blue's kernel) instead. **This means the local workarounds below now need to be
+maintained indefinitely** — there is no PR-merge date to wait out anymore, only "until OGC actually
+bundles the vendor driver," which is untracked as of this writing. Full background (the review
+back-and-forth, the closing comments, exact reasoning) is in `handoff.md`'s 2026-09-04 session
+(tracked on this fork's `claude` branch only — see the fork-only note at the top; it is *not*
+untracked) — that file is a running session-to-session handoff log (current PR/review status,
+in-progress experiments, next-session TODOs); durable facts about the codebase or this device belong
+here instead.
 
 ### Development environment on this machine
 
@@ -209,11 +225,15 @@ This checkout runs inside a toolbox (`inputplumber-dev`). Consequences:
   `sudo` to the user to run themselves (e.g. via Claude Code's `!` prefix) rather than attempting it
   directly.
 
-- **PR #664** — Steam/QAM buttons, View button, duplicate composite device, the dial capability
-  mappings that were swallowing the left touchpad's scroll events, and the physical HOME button's
-  real key chords (mapped to `Screenshot`/`Guide` — see Hardware reference below).
-- **PR #668** — binds the rear paddles by speaking the vendor config protocol over hidraw. Their
-  mapping ships empty, so the firmware sends nothing for them until it is written.
+- **PR #664** (closed unmerged) — Steam/QAM buttons, View button, duplicate composite device, the
+  dial capability mappings that were swallowing the left touchpad's scroll events, and the physical
+  HOME button's real key chords (mapped to `Screenshot`/`Guide` — see Hardware reference below).
+- **PR #668** (closed unmerged) — binds the rear paddles by speaking the vendor config protocol over
+  hidraw. Their mapping ships empty, so the firmware sends nothing for them until it is written.
+
+Both branches/commits remain useful as local reference (the config fixes, the dial protocol, the
+paddle hidraw implementation) even though neither is headed upstream anymore — see handoff.md's
+2026-09-04 session for the closing reasoning in full.
 
 ### What each fix currently depends on
 
@@ -363,20 +383,23 @@ python3 ~/zotac-zone-tools/zotac-zone-paddles
 It finds the right hidraw node itself and needs no root. `~/zotac-zone-tools/zotac-zone-paddles.sh`
 is a wrapper for registering it as a non-Steam game, so it can be launched from Game Mode.
 
-### After the PRs are merged and shipped — remove the workarounds
+### After OGC ships the vendor driver — remove the workarounds
 
-The `/etc` overrides take priority over the packaged configs *permanently*. Once upstream's
-versions ship, ours keep shadowing them, so any changes made during review, and any later upstream
-work on this device, would never take effect. A config schema change could also leave a stale
-override failing to load.
+Since both PRs were closed unmerged (see above), there's no InputPlumber-side fix to wait for
+anymore. The thing to watch for instead is OGC (Universal Blue's kernel) bundling the vendor kernel
+driver (`zotac_zone_hid`) — once that's in place, the kernel itself exposes the gamepad/dials/paddles
+properly and these config/hidraw-level workarounds become unnecessary (and possibly counterproductive
+— see the `phys_path` note below).
 
-Check whether the fixes have landed:
+There is currently no known automated check for "has OGC shipped the driver yet" (unlike the old
+`grep -c "phys_path" ...` check, which tested for an upstream InputPlumber fix that no longer exists).
+Watch OGC/Universal Blue release notes or kernel package changelogs instead. **Note**: even once the
+vendor driver is present, its `zotac_zone_hid` module needs to actually be loaded/bound (not
+blacklisted) for this to matter — check with `modinfo zotac_zone_hid` and `lsmod | grep zotac`.
 
-```sh
-grep -c "phys_path" /usr/share/inputplumber/devices/50-zotac-zone.yaml   # >= 1 means #664 shipped
-```
-
-When they have:
+The `/etc` overrides take priority over the packaged configs *permanently*, so once the driver
+lands, they'd keep shadowing whatever InputPlumber does by default for this device unless explicitly
+removed:
 
 ```sh
 sudo rm -rf /etc/inputplumber
@@ -385,3 +408,39 @@ rm -rf ~/zotac-zone-tools          # scripts are then obsolete too
 ```
 
 and remove the non-Steam shortcut from Steam.
+
+⚠️ **Open question, unverified on this machine**: `pastaq`'s 2026-09-02 review on PR #664 (before
+closing it) reported that with the vendor driver loaded, the gamepad enumerates on
+`phys_path: "*/input3"` rather than `"*/input1"` (`50-zotac-zone.yaml`'s current `phys_path` glob
+only covers `input1`). If the vendor driver ever does get bundled and loaded on this machine, the
+gamepad `source_devices` entry's `phys_path` may need broadening to
+`"{*/input1,*/input3}"` (or similar) to keep matching — this was reported from pastaq's own hardware,
+not reproduced here, since this machine has never run the vendor driver.
+
+**Don't treat "the driver landed" as "blindly revert everything to stock" — sort the local work into
+three buckets instead:**
+
+1. **Hidraw/userspace workarounds that only exist because the vendor kernel module is absent** —
+   the `zotac-zone-paddles` script (hidraw `CMD_SET_BUTTON_MAPPING`) and the withdrawn dial-polling
+   approach. These become obsolete on their own once the driver is loaded: paddles get remapped
+   through InputPlumber's existing upstream sysfs path (`configure_via_sysfs()`,
+   `btn_m2/remap/keyboard` etc. — this is what the vendor driver's sysfs interface was for all
+   along), and dials appear as their own real evdev device (`wheel_input`), to which the
+   already-written `zone_type1_dial.yaml` (`zone1_dial`) map can simply be attached as that source's
+   `capability_map_id`. No revert needed — just stop invoking the workaround script and, for dials,
+   finish wiring the existing map to the new source instead of writing new code.
+2. **InputPlumber config/matching fixes that are independent of the vendor driver** — the evdev
+   name-glob fix (`c00deba`), the duplicate-composite-device fix (`193328a`), the F17/F18 swap
+   (`399510c`), the touchpad `source_devices` removal, and the HOME-chord
+   `Screenshot`/`Guide` mapping. These fix how InputPlumber matches *this device's config* against
+   what the kernel reports, regardless of whether the vendor driver is present — and since neither PR
+   merged, the packaged config upstream still has these bugs. **Don't revert these outright**, but
+   don't assume they still apply unchanged either: vendor-driver presence can change what the kernel
+   reports (see the `phys_path`/`input3` note above), so re-verify each field against real hardware
+   once the driver is actually loaded here, and adjust only what's actually changed.
+3. **This documentation** (`CLAUDE.md`, `handoff.md`) — not something to revert; keep it as the
+   session record and add a new dated section once the driver actually lands here, covering what was
+   re-tested and what changed.
+
+In short: expect a **re-verification session on real hardware** when the driver actually shows up on
+this machine, not a blind rollback.

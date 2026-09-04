@@ -1,11 +1,25 @@
 # InputPlumber Zotac Gaming Zone 버그 수정 - 작업 인계 문서
 
-## 상태 요약 (최신, 2026-08-28)
+## 상태 요약 (최신, 2026-09-04)
 
-**PR #664: pastaq가 요청한 실기기 검증 3건 전부 완료 + 답변 게시 완료 (2026-08-28T12:54:36Z,
-https://github.com/ShadowBlip/InputPlumber/pull/664#issuecomment-5452750998). 이제 pastaq 응답
-대기 중.** 상세는 아래 "★ 2026-08-28 세션" 참고. **다음 세션은 pastaq가 이 코멘트에 답했는지
-확인하는 것부터 시작할 것.**
+**★★ PR #664, #668 둘 다 머지 없이 CLOSED됨 (각각 09-02, 09-03) — pastaq가 주말 실기기 검증 후
+"벤더 드라이버를 OGC 커널에 번들 탑재하는 방향으로 간다"고 결정, 이 두 PR의 config/hidraw
+워크어라운드 자체가 채택 안 됨.** 상세는 아래 "★ 2026-09-04 세션" 참고. 이 리포의 로컬 워크어라운드
+(`/etc` override + `zotac-zone-paddles` 스크립트)는 OGC가 실제로 벤더 드라이버를 번들할 때까지
+**계속 유지해야 함** — CLAUDE.md의 "PR 머지되면 정리" 조건은 이제 성립하지 않으므로 그 섹션의
+전제가 바뀌었음을 유의할 것 (아직 CLAUDE.md 자체는 미수정).
+
+**(구, 09-04 이전 최신) PR #664: 2026-08-30에 pastaq의 매핑 제안(MORE→QuickAccess, HOME짧게→QuickAccess2,
+HOME길게→Keyboard)을 실기기 TUI로 직접 테스트함 — pastaq의 예상과 반대로 Screenshot/QuickAccess는
+그 매핑으로 바꿔도 여전히 TUI에 안 나타남, 코드 근거(pastaq 본인이 링크한 코드)도 우리 쪽 분석을
+뒷받침함. 상세는 "★ 2026-08-30 세션" 참고. pastaq의 주말 실기기 검증 결과는 아직 안 옴.**
+
+**PR #664: pastaq가 08-28T14:04:16Z에 답변함 (issuecomment-5453477541) — 리뷰가 코멘트 공방에서
+"pastaq 본인이 이번 주말 실기기로 직접 검증"하는 국면으로 전환됨.** Screenshot/QuickAccess 매핑
+컨벤션에 대해서는 여전히 이견 존재(pastaq는 본인 안 MORE→QuickAccess / HOME짧게→QuickAccess2 /
+HOME길게→Keyboard를 재주장). 5초 파워메뉴 설명과 터치패드 entry 제거는 반박 없이 수용된 것으로
+보임(다만 터치패드는 명시적 OK는 아직 없음 — 계속 미커밋 유지). 상세는 아래 "★ 2026-08-29 세션"
+참고. **다음 세션은 pastaq의 주말 실기기 검증 결과(추가 코멘트)가 왔는지 확인하는 것부터 시작할 것.**
 
 **⚠️ 지금 `/etc/inputplumber/devices.d/50-zotac-zone.yaml`은 터치패드(`group: mouse`) entry가
 제거된 상태로 배포돼 있음.** 리포 작업트리도 같은 상태지만 **커밋은 안 함** — pastaq 확인 후
@@ -695,7 +709,8 @@ pastaq의 08-27 12:01 코멘트가 요청한 3가지를 전부 실기기에서 �
 
 ### 5. 다음 세션 TODO
 
-1. **pastaq가 08-28 코멘트(issuecomment-5452750998)에 답했는지 확인.**
+1. ~~pastaq가 08-28 코멘트(issuecomment-5452750998)에 답했는지 확인.~~ → **2026-08-29에 확인함,
+   답변 있었음.** 상세는 아래 "★ 2026-08-29 세션" 참고.
 2. **PR #668 병합됐는지 확인** (`gh pr view 668 --repo ShadowBlip/InputPlumber --json state,mergedAt`).
 3. pastaq가 터치패드 entry 제거에 확인을 주면 **커밋** (지금은 작업트리/`/etc`에만 반영, 미커밋).
 4. **미착수로 남아있는 것**: PR 코드 라인별 설명 듣기(아래 "다음 세션 작업 0" 참고) — 사용자가
@@ -710,6 +725,227 @@ pastaq의 08-27 12:01 코멘트가 요청한 3가지를 전부 실기기에서 �
 - `rootfs/usr/share/inputplumber/devices/50-zotac-zone.yaml` — 터치패드 `group: mouse` entry 주석
   처리(제거). **pastaq 확인 전까지 커밋 보류.**
 - 리포 밖: `~/zotac-zone-tools/getcmd.py` 오프셋 수정, `~/zotac-zone-tools/rdesc_usage.py` 신규.
+
+## ★ 2026-08-29 세션 — pastaq의 08-28 답변 확인 (GitHub API로 조회, 코드 변경 없음)
+
+### 결과 요약
+
+`gh` CLI가 이 toolbox/host 양쪽 다 설치돼 있지 않아서(둘 다 `command not found`), GitHub REST API를
+`curl`로 직접 조회해서 확인함. pastaq가 2026-08-28T14:04:16Z에 답변함
+(https://github.com/ShadowBlip/InputPlumber/pull/664#issuecomment-5453477541). PR 상태는 여전히
+`state: open`, `mergeable_state: clean`.
+
+답변은 우리 08-28 코멘트 원문을 블록쿼트로 인용하면서 그 사이사이에 pastaq 자신의 코멘트를 삽입하는
+형식. 인용된 부분(별다른 반박 문구 없이 그대로 인용만 된 부분)은 사실상 이견 없이 수용한 것으로
+해석함.
+
+**1) `inputplumber device 0 test`에서 Screenshot/QuickAccess가 안 보이는 것 — pastaq는 납득하지 않음.**
+- "capability map의 모든 항목이 composite device의 capabilities HashSet에 들어간다"며
+  `composite_device/mod.rs` 233-256행(당시 upstream `main` 기준 `23f84b7`)을 직접 링크. "본인은
+  매일 이렇게 config를 검증하는데 이렇게 동작 안 한다면 뭔가 이상한 것"이라는 취지로 우리 쪽 코드
+  분석(chord 번역 결과물 capability는 TUI 패널에 구조적으로 안 뜬다는 설명, 위 "★ 2026-08-28 세션"
+  1번 참고)에 의구심을 표함. 이 부분은 **재반박 여부를 검토할 여지가 있음** — 다만 서두르지 않기로
+  함(아래 "다음 액션" 참고).
+- **매핑 컨벤션 재주장**: MORE(F17)→`QuickAccess`, HOME 짧게→`QuickAccess2`, HOME 길게→`Keyboard`
+  (자신이 원래 제안했던 안 그대로, 우리가 채택한 `Screenshot`/`Guide`가 아님). 근거로 "다른 모든
+  기기에서 Guide/QuickAccess/QuickAccess2/Keyboard의 배치 컨벤션을 일관되게 유지한다"는 자신의
+  일반 원칙을 재설명함(왼쪽=Guide, 오른쪽 첫 여분 버튼=QuickAccess, 추가 여분 버튼=QuickAccess2 →
+  OpenGamepadUI 미실행 시 Screenshot / 실행 시 OGUI Quick Bar로 동작, 네 번째 버튼이 있으면
+  Keyboard). "당신이 지금 매핑 대신 내 제안대로 맞추면 테스터에서 더 잘 나올 것"이라는 뉘앙스의
+  문장도 있음 — 즉 **현재 매핑 자체에 뭔가 문제가 있다는 암시**를 하고 있음.
+- **★ 가장 중요한 신규 사실: pastaq가 이번 주말(다음 주말, 정확한 날짜 미명시) 직접 이 브랜치를
+  pull해서 본인 소유 Zotac Zone 실기기로 검증하겠다고 선언함.** 벤더 드라이버 없는 OGC 커널과
+  벤더 드라이버 있는 Valve 커널 둘 다 테스트할 예정이라고 명시.
+
+**2) 5초 파워메뉴 — 반박 없음.** 우리 설명(가상 Guide 버튼 홀드 트리거로 추정, `KEY_LEFTMETA`/
+`powerbuttond`와 무관함을 실기기로 반증)을 그대로 인용만 하고 이견 제시 안 함. 사실상 종결로 판단.
+
+**3) 터치패드 `source_devices` entry 제거 — 반박 없음, 그러나 명시적 승인 문구도 없음.** 우리가
+쓴 원문("당신(#410 원저자)이 확인해주면 커밋하겠다")을 그대로 인용만 함. **"가서 커밋해라"는 명확한
+문장은 없으므로, 계속 미커밋 상태 유지가 안전하다고 판단** — pastaq 본인이 이번 주말 검증에 이
+부분도 포함시킬 가능성이 높아 보임.
+
+### 다음 액션 (판단, 사용자 액션 필요 — CONTRIBUTING.md상 리뷰어 답변은 AI 작성 금지)
+
+- **지금 당장 답변할 필요는 없어 보임** — pastaq가 본인 실기기로 직접 검증하겠다고 이미 선언했으므로,
+  그 결과를 기다리는 게 합리적. 짧은 인사성 답글(대기하겠다는 정도) 정도는 선택 사항.
+- **Screenshot/Guide vs pastaq의 QuickAccess/QuickAccess2/Keyboard 컨벤션 — 순수 사용자 판단 필요.**
+  기술적 근거 대립이 아니라 UX 취향/컨벤션 일관성 문제라 코드로 결론 낼 수 없음. pastaq가 주말에
+  직접 테스트해볼 것이므로 지금 미리 코드를 바꿀 필요는 없어 보임.
+- **터치패드 entry 커밋은 계속 보류.**
+- **PR #668 병합 여부는 이번 세션에서 미확인** — 다음 세션에서 `gh` 대신 GitHub REST API
+  (`curl -s "https://api.github.com/repos/ShadowBlip/InputPlumber/pulls/668"`)로 확인할 것.
+  참고: 이 환경엔 `gh` CLI가 toolbox/host 어디에도 없음 — `curl` + GitHub REST API가 유일한
+  조회 수단(비인증 상태라 public repo 읽기 전용, rate limit 있음에 유의).
+
+## ★ 2026-08-30 세션 — pastaq 제안 매핑을 실기기에서 직접 테스트
+
+### 배경
+
+08-28 pastaq 코멘트의 1번 항목("TUI에서 Screenshot/QuickAccess가 안 보이는 건 이상하다, 내 제안
+컨벤션(MORE→QuickAccess, HOME짧게→QuickAccess2, HOME길게→Keyboard)으로 맞추면 tester에서 결과가
+더 잘 나올 것")을 실기기로 직접 검증함. 추가로 pastaq가 반박 근거로 링크한
+`composite_device/mod.rs` L233-256(커밋 `23f84b7`)을 코드로 직접 읽어봤는데, 그 블록은
+**최상위 `capability_map_id`(`device.capability_map`)가 있을 때만** 도는 경로(`manager.rs:583`의
+`config.capability_map_id`로 세팅됨)이고, `50-zotac-zone.yaml`엔 최상위 `capability_map_id`가
+없음(`source_devices[]` 안에만 있음) — 즉 **pastaq가 링크한 코드 자체가 오히려 우리 쪽 분석(소스별
+translator만 쓰이고 device-wide 경로는 이 기기에서 아예 안 돈다)을 뒷받침함.** 이걸 실기기 실측으로도
+확인하기 위해 테스트 진행.
+
+### 방법
+
+`zone_type1.yaml`을 pastaq 컨벤션대로 임시 수정한 테스트 버전 작성(저장소는 건드리지 않고
+scratchpad에 별도 파일로): MORE(F17) `Guide→QuickAccess`, HOME짧게(real chord)
+`Screenshot→QuickAccess2`, HOME길게(real chord) `Guide→Keyboard`. ZOTAC(F16)→Guide와 패들 매핑은
+그대로 둠. `/etc/inputplumber/capability_maps.d/zone_type1.yaml`을 백업 후 이 테스트 버전으로 교체,
+`systemctl restart inputplumber` 후 리포 밖(`~`)에서 `inputplumber device N test` TUI로 확인.
+**저장소(`rootfs/.../devices/50-zotac-zone.yaml`의 터치패드 entry 제거 미커밋 변경 등)는 이 작업
+중 전혀 건드리지 않음.**
+
+### 결과 — pastaq의 예상과 반대로 나옴
+
+- **Screenshot/QAM(QuickAccess, QuickAccess2) 박스: pastaq 컨벤션으로 바꿔도 TUI에 여전히 전혀 안
+  나타남**(박스 자체가 안 생김). pastaq의 "내 config로 맞추면 tester에서 더 잘 나올 것"이라는 예상이
+  **실측으로 반증됨** — 08-28에 확인한 "Screenshot/QuickAccess는 이 패널 구조상 절대 안 뜬다"는
+  결론이 매핑을 바꿔도 그대로 유지됨.
+- **Guide 박스: 존재는 하되(다른 소스가 별도로 raw declare하는 것으로 추정) 눌러도 무반응.** 버그가
+  아니라 예상된 결과 — 이 테스트 config에서 Guide로 가는 실제 물리 트리거(F17/HOME길게)를 전부
+  QuickAccess/Keyboard로 옮겨버렸고, Guide엔 F16(실제로 신호를 안 보내는 것으로 보이는 죽은 소스
+  이벤트)만 남아서 눌러도 반응이 없는 게 당연함.
+- **나머지 버튼(ABXY/D패드/숄더/트리거/스틱/패들 등): 전부 정상, 회귀 없음.**
+
+### 원상복구 및 검증
+
+`/etc` 백업본으로 복구 후 `systemctl restart inputplumber`, 이어서 배포본과 저장소 원본
+(`rootfs/usr/share/inputplumber/capability_maps/zone_type1.yaml`)이 diff 없이 완전히 일치함을
+확인함. 백업 파일도 정리 완료. **git 변경사항 없음** — 이 세션은 `/etc` 배포본만 임시로 건드렸다가
+원복한 것이라 커밋할 것도 없음(기존 미커밋 변경 3건은 그대로 유지: `CLAUDE.md`, `handoff.md`,
+`50-zotac-zone.yaml`의 터치패드 entry 제거).
+
+### 의미
+
+pastaq의 1번 항목 반박에 쓸 수 있는 근거가 두 겹으로 갖춰짐: (a) pastaq 본인이 링크한 코드가
+사실은 우리 쪽 분석(device-wide 경로는 이 기기에서 안 쓰인다)을 뒷받침한다는 코드 근거, (b) 그
+코드 분석을 실기기로 직접 검증해서 pastaq의 매핑으로 바꿔도 여전히 안 뜬다는 실측 근거. 다만
+**답변 게시는 여전히 사용자 직접 작성 필요**(CONTRIBUTING.md), 그리고 pastaq가 이번 주말 본인
+실기기로 검증하겠다고 예고한 상태라 그 결과를 먼저 볼지, 이 근거로 먼저 재반박할지는 사용자 판단
+필요.
+
+### 다음 세션 TODO (갱신)
+
+1. pastaq의 주말 검증 결과(추가 코멘트) 왔는지 확인.
+2. 이번 세션에서 확보한 반박 근거(코드+실측)를 코멘트에 반영할지 사용자와 상의.
+3. PR #668 병합 여부 확인 (`curl -s "https://api.github.com/repos/ShadowBlip/InputPlumber/pulls/668"`).
+4. 터치패드 entry는 pastaq 확인 오면 커밋.
+5. 여전히 미착수: PR 코드 라인별 설명 듣기.
+
+## ★ 2026-09-04 세션 — PR #664, #668 둘 다 CLOSED 확인 (GitHub API 조회, 코드 변경 없음)
+
+### 0. 결과 요약
+
+이 세션에서 `gh` CLI가 이 toolbox에 새로 설치돼 있는 걸 확인함(08-29 세션 때는 없었음). `gh`와
+GitHub API(`curl`)로 PR #664, #668 상태를 조회한 결과 **둘 다 머지되지 않고 CLOSED됨**을 확인—
+직전 세션(08-30)까지는 둘 다 OPEN이었으므로 이 세션에서 처음 발견한 사실.
+
+### 1. PR #664 — 09-02T22:37:52Z CLOSED (pastaq)
+
+09-02에 pastaq가 인라인 리뷰 코멘트 2건을 남기고 곧바로 PR을 닫음:
+
+- `rootfs/usr/share/inputplumber/devices/50-zotac-zone.yaml:59` — "This matches on multiple
+  devices now, add unique: false" (터치패드 관련 entry가 여러 장치에 매칭되는 문제 지적).
+- `rootfs/usr/share/inputplumber/devices/50-zotac-zone.yaml:35`(`phys_path: "*/input1"`) —
+  **"This breaks the config when the driver is present"**. 벤더 드라이버(`zotac_zone_hid`)가 로드된
+  Valve 커널에서 실제로 캡처한 `/proc/bus/input/devices` 항목을 첨부:
+  ```
+  N: Name="ZOTAC Gaming Zone Gamepad"
+  P: Phys=usb-0000:c4:00.3-4/input3
+  H: Handlers=kbd event11 js0
+  ```
+  즉 벤더 드라이버가 있으면 게임패드가 `input1`이 아니라 **`input3`**(interface 3)으로 잡힘 —
+  `phys_path: "{*/input[1|3]}"`로 고쳐야 벤더 드라이버 유무 양쪽에서 다 맞는다는 지적.
+- **클로징 코멘트(09-02T22:37:52Z)**: *"After extensive evaluation with the zotac_zone_hid driver
+  blacklisted I can confidently state that this is not a viable configuration. The gamepad does
+  not enumerate without the driver present at all without a udev rule for xpad."*
+  — 벤더 드라이버를 블랙리스트한 조건(이 사용자 기기와 동일한, 벤더 드라이버 없는 OGC 커널 조건)에서
+  **게임패드 자체가 xpad용 udev 규칙 없이는 열거되지 않는다**는 걸 pastaq 본인 실기기로 확인했다는
+  결론. 이 사용자 실기기(kernel xpad가 `event14`/`event10`로 정상 노출됨, 이 리포 전체에 걸쳐 검증
+  완료)와는 다른 결과인데, 정확히 어떤 차이(예: udev 규칙 유무, 커널 버전, xpad 모듈 자동로드 설정
+  등) 때문인지는 이 코멘트만으로는 특정 안 됨 — **원인 미상, 다음 세션 조사 후보.**
+
+리뷰 이력 전체(`gh pr view 664 --json reviews`)도 재확인: CHANGES_REQUESTED가 08-25, 08-26 두
+차례였고, 09-02 리뷰 2건은 모두 `COMMENTED`(인라인 코멘트 형태) 상태로 남음 — 별도의 최종
+CHANGES_REQUESTED/REJECTED 리뷰 없이 코멘트 직후 바로 PR을 닫은 것으로 확인됨.
+
+### 2. PR #668 — 09-03T01:53:24Z CLOSED (pastaq)
+
+08-27 APPROVED + "squash merge하겠다" 예고 이후 아무 활동이 없다가, 09-03에 다음 코멘트만 남기고
+닫힘: *"We're going to ship the driver in OGC as this isn't a viable path forward."*
+
+패들 hidraw 프로토콜 구현(리뷰 반영 완료, CI 전부 SUCCESS 상태였음)이 코드 결함 때문이 아니라
+**전략 변경**(config/hidraw 워크어라운드 대신 벤더 커널 드라이버를 OGC에 번들)으로 폐기된 것으로
+읽힘. 인라인 코드 리뷰 코멘트는 이 클로징 코멘트 외에 추가로 없음.
+
+### 3. 종합 — 두 PR이 같은 결정으로 묶여서 닫힘
+
+두 코멘트를 합쳐 읽으면 pastaq의 결론은: *"config/hidraw 레벨 워크어라운드로는 이 기기(벤더 드라이버
+없는 조건)를 완전히 커버할 수 없다(게임패드 열거 자체가 안 됨) → 근본 해결은 벤더 커널 드라이버
+(`zotac_zone_hid`)를 OGC(Universal Blue/Bazzite 커널)에 번들 탑재하는 것 → 그러면 다이얼/패들/
+게임패드 열거가 전부 커널 레벨에서 정식으로 해결되므로 이 두 PR의 접근 자체가 불필요해진다."*
+라는 방향 전환으로 보임. **"언제" OGC가 벤더 드라이버를 실제로 번들할지는 이 코멘트들만으로는
+알 수 없음 — 추적 필요.**
+
+### 4. 이 리포 로컬 워크어라운드에 미치는 영향
+
+CLAUDE.md "This machine" 섹션의 "PR이 머지되고 이미지에 반영되면 워크어라운드 정리" 전제가 더 이상
+성립하지 않음. `/etc/inputplumber/devices.d/50-zotac-zone.yaml`, `capability_maps.d/zone_type1.yaml`
+override와 `~/zotac-zone-tools/zotac-zone-paddles` 수동 실행 워크어라운드는 **OGC가 실제로 벤더
+드라이버를 번들할 때까지 무기한 유지**해야 함.
+
+**★ CLAUDE.md는 이후 같은 세션에서 갱신 완료함** ("PR이 병합되면" → "OGC가 벤더 드라이버를 번들하면"
+전제로 교체, `grep -c "phys_path" ...` 체크 제거 — 더 이상 유효한 신호가 아님). 추가로 사용자 질문
+("드라이버가 통합되면 지금까지 한 작업은 되돌려야 하나?")에 답하며 정리한 **3단계 분류를
+CLAUDE.md "After OGC ships the vendor driver" 섹션에 반영함**:
+
+1. **벤더 드라이버가 대체하는 hidraw/유저스페이스 우회** (`zotac-zone-paddles` 스크립트, 철회된
+   다이얼 폴링 구현) — 되돌릴 필요 없이 **자연 폐기**. 패들은 upstream 코드의 기존 sysfs 경로
+   (`configure_via_sysfs()`)가 그때부터 작동하고, 다이얼은 벤더 드라이버가 노출하는 별도 evdev
+   장치(`wheel_input`)에 이미 만들어둔 `zone_type1_dial.yaml`(`zone1_dial`)을 그냥 붙이면 됨.
+2. **벤더 드라이버와 무관한 InputPlumber config 매칭 수정** (`c00deba` evdev name, `193328a` 중복
+   composite device, `399510c` F17/F18 스왑, 터치패드 entry 제거, HOME chord 매핑) — **무작정
+   되돌리지 말고 실기기 재검증 후 필드별로만 조정**. 패키지 config는 PR 미병합으로 여전히 원래
+   버그가 있는 상태이지만, 벤더 드라이버가 로드되면 커널이 보고하는 토폴로지 자체가 바뀔 수 있어서
+   (예: `phys_path`가 `input1`→`input3`로 바뀐다는 pastaq의 09-02 리뷰 보고, 아직 이 기기에서
+   미검증) 그대로 다 맞는다는 보장도 없음.
+3. **CLAUDE.md/handoff.md 자체** — 되돌릴 대상 아님, 드라이버가 실제로 이 기기에 들어오면 그 시점에
+   새 세션 기록을 추가.
+
+**결론: "전부 되돌린다"는 개념 자체가 안 맞고, 드라이버가 실제로 이 기기에 도착하는 시점에 실기기
+재검증 세션이 한 번 더 필요하다**는 게 확정된 방침. 상세 문구는 CLAUDE.md가 정본.
+
+두 PR의 브랜치/커밋(다이얼 프로토콜 확정 내용, 패들 hidraw `PackedStruct` 구현 등)는 upstream
+제출용으로는 사실상 종료됐지만, 로컬 참고 자료로는 여전히 유효함.
+
+### 5. 리뷰어 응답 관련
+
+CONTRIBUTING.md상 리뷰어에게 AI로 답변하는 것은 금지(고지 여부와 무관하게 조건 없는 금지)이므로,
+이 결과에 어떻게 대응할지(PR을 닫힌 채로 둘지, "OGC 드라이버가 언제쯤 반영되는지" 정도만 물을지 등)는
+**사용자가 직접 판단·작성**해야 함 — 이 세션에서는 조회만 하고 어떤 코멘트도 게시하지 않음.
+
+### 6. 다음 세션 TODO (갱신, 이전 항목 대체)
+
+1. ~~CLAUDE.md의 "This machine" 섹션을 이 결과에 맞춰 갱신~~ → **이번 세션에서 완료함**(머지 전제를
+   "OGC 벤더 드라이버 번들" 전제로 교체 + "되돌릴 필요 없는 것 vs 재검증 필요한 것" 3단계 분류 반영).
+2. pastaq가 언급한 "게임패드가 udev 규칙 없이 열거 안 됨" 현상이 이 사용자 실기기와 왜 다른지
+   원인 조사(선택 사항 — upstream 제출 계획이 없어졌으므로 우선순위 낮음, 다만 이 기기 자체의
+   향후 안정성엔 참고 가치 있음).
+3. OGC(Universal Blue/Bazzite 커널)가 `zotac_zone_hid` 벤더 드라이버를 실제로 번들했는지 추적할
+   방법 마련 (예: 커널 패키지 changelog, ublue-os 관련 리포 이슈/PR 검색 — 아직 미착수).
+4. 터치패드 entry 제거, HOME/QAM 매핑 등 PR #664에서 다투던 개별 이슈들은 이제 upstream 제출
+   목적이 사라졌으므로, 로컬 `/etc` override 전용으로 계속 쓸지 사용자와 확인 필요.
+5. (이전부터 미착수) PR 코드 라인별 설명 듣기 — upstream 제출 계획은 종료됐지만 사용자가 요청한
+   학습 목적 자체는 여전히 유효할 수 있음, 필요 여부 사용자 확인.
+
+---
 
 ## 참고: 디버깅 기법
 
