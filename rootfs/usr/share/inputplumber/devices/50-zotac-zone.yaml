@@ -56,12 +56,15 @@ source_devices:
   #    vendor_id: "1ee9"
   #    product_id: "1590"
   #    handler: event*
-  - group: mouse
-    evdev:
-      name: "{ZOTAC Gaming Zone Mouse,ZOTAC Gaming Zone Dials,Zotac Technology Limited ZOTAC GAMING ZONE Mouse}"
-      vendor_id: "1ee9"
-      product_id: "1590"
-      handler: event*
+  # Removed per pastaq's PR #664 review suggestion: this evdev node carries no
+  # buttons, only pointer motion and a scroll wheel, so nothing needs grabbing
+  # here — verified on hardware that both still work natively when ungrabbed.
+  #- group: mouse
+  #  evdev:
+  #    name: "{ZOTAC Gaming Zone Mouse,ZOTAC Gaming Zone Dials,Zotac Technology Limited ZOTAC GAMING ZONE Mouse}"
+  #    vendor_id: "1ee9"
+  #    product_id: "1590"
+  #    handler: event*
   - group: imu
     iio:
       name: "{i2c-BMI0160:00,bmi260}"
