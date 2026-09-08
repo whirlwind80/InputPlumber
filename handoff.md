@@ -1049,6 +1049,30 @@ chord entry 2개는 죽은 코드가 되어 제거하고, F17→QuickAccess / F1
   맞추려던 시도는 계속 실패했다. **사용자 본인 터미널에서 포그라운드로 돌리게 하고 결과를 붙여받는
   방식이 유일하게 잘 됐다.**
 
+### 5.5. pastaq 주장과의 최종 대조 (세션 말미에 확인)
+
+| pastaq 주장 | 현재 config | 부합 |
+|---|---|---|
+| F16 → `Guide` | 동일 | ✅ |
+| MORE(F17) → `QuickAccess` | 동일 (이번에 `Guide`에서 고침) | ✅ |
+| HOME 짧게 → `QuickAccess2` | `Screenshot` | ❌ 의도적 |
+| HOME 길게 → `Keyboard` | `Guide` | ❌ 의도적 |
+| `unique: false` 추가하라 | 전 entry에 추가 | ✅ |
+| 터치패드 entry 제거 | 유지(제거 상태) | ✅ |
+| 벤더 드라이버가 정답 | 그 전제로 재작성 | ✅ |
+| 드라이버 있으면 게임패드가 `*/input3` | 여기선 `*/input1`+`*/input0` | ⚠️ 재현 안 됨 |
+
+**의도적으로 다른 2개의 근거는 0.79.0에서도 그대로 유효함을 확인함**(`git show v0.79.0:src/input/
+event/evdev.rs` → `GamepadButton::Keyboard => vec![]`, `QuickAccess2 => vec![]`). `QuickAccess`와
+`Screenshot`만 `xpad.rs::write_event`가 특수 처리한다. pastaq의 컨벤션은 **DBus/`unified_gamepad`
+타겟이 런타임에 붙는 스택**(OpenGamepadUI가 타겟을 교체하는 경우)을 전제로 한 것으로 보이는데, 이
+기기 config의 `target_devices`엔 DBus 타겟이 없다. **주목할 점: upstream이 이번에 패키지로 낸
+`50-zotac-zone.yaml`도 DBus 타겟 없이 `QuickAccess2`/`Keyboard`를 쓰고 있어서, 그대로 쓰면 HOME
+버튼 두 개가 아무 동작도 안 한다.**
+
+또 하나의 차이: **upstream 패키지판에는 `*/input0`(xpad) entry가 없다.** 오늘 실측으로 그게 없으면
+표준 버튼이 전부 죽는 걸 확인했으므로 이 부분은 우리 쪽이 이 하드웨어에 대해 더 정확하다.
+
 ### 6. 다음 세션 TODO
 
 1. 재부팅 후에도 컴포짓 디바이스 1개 + 전 버튼 정상인지 한 번 더 확인(이번엔 재시작만 반복 검증함).
@@ -1056,7 +1080,17 @@ chord entry 2개는 죽은 코드가 되어 제거하고, F17→QuickAccess / F1
 3. `~/zotac-zone-tools/zotac-zone-paddles` 및 Steam 비-Steam 게임 등록 정리(이제 불필요).
 4. upstream 이슈 후보 4건 정리해서 올릴지 결정: 타겟 `run()` 루프 영구 사망, `unique` 기본값 함정,
    `filtered_events` 무시, 동명 config 중복 로드. (PR은 안 내더라도 이슈는 가치 있음)
-5. 미착수로 계속 남아있는 것: PR 코드 라인별 설명 듣기.
+5. **벤더 게임패드 entry의 `phys_path: "*/input1"` 제약을 뺄지 검토** — upstream 패키지판은
+   `phys_path` 없이 이름만으로 매칭한다. 원래 이 제약을 넣은 이유는 중복 컴포짓 디바이스 방지였는데
+   이제 `unique: false`가 들어가서 그 역할이 대부분 사라졌고, 빼면 pastaq가 자기 기기에서 보고한
+   `*/input3` 토폴로지(여기선 재현 안 됨)에도 자동으로 대응된다. **다만 지금 정상 동작 중이므로
+   건드리면 재검증 필요** — 우선순위 낮음, 다른 기기/커널로 옮길 계획이 생기면 그때 하는 게 맞다.
+6. **체크아웃(0.78.1)과 설치 패키지(0.79.0-4)의 버전이 어긋나 있다.** 09-08 세션에서 "QuickAccess2/
+   Keyboard는 출력이 없다" 같은 코드 근거를 0.78.1 기준으로 읽고 있었다는 걸 뒤늦게 발견해서
+   `v0.79.0` 태그로 재확인했고 결론은 같았지만, 앞으로도 이러면 위험하다. `upstream/main`(현재
+   `0ca9869`, 0.79.1)을 받아서 로컬 `main`을 동기화해둘 것. **단 `claude` 브랜치에 머지하지 말 것**
+   (문서 파일이 upstream으로 새는 걸 막는 이 리포의 규칙).
+7. 미착수로 계속 남아있는 것: PR 코드 라인별 설명 듣기.
 
 ---
 
