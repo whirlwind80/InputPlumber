@@ -30,7 +30,7 @@ mapping:
                 value_type: button
       target_event:
           gamepad:
-              button: Guide
+              button: QuickAccess
     - name: HOME (shortpress)
       source_events:
           - evdev:
@@ -39,46 +39,12 @@ mapping:
                 value_type: button
       target_event:
           gamepad:
-              button: QuickAccess
+              button: Screenshot
     - name: HOME (longpress)
       source_events:
           - evdev:
                 event_type: KEY
                 event_code: KEY_F19
-                value_type: button
-      target_event:
-          gamepad:
-              button: Keyboard
-    - name: HOME (shortpress, real)
-      mapping_type:
-          evdev: chord
-      source_events:
-          - evdev:
-                event_type: KEY
-                event_code: KEY_LEFTMETA
-                value_type: button
-          - evdev:
-                event_type: KEY
-                event_code: KEY_D
-                value_type: button
-      target_event:
-          gamepad:
-              button: Screenshot
-    - name: HOME (longpress)
-      mapping_type:
-          evdev: chord
-      source_events:
-          - evdev:
-                event_type: KEY
-                event_code: KEY_LEFTCTRL
-                value_type: button
-          - evdev:
-                event_type: KEY
-                event_code: KEY_LEFTALT
-                value_type: button
-          - evdev:
-                event_type: KEY
-                event_code: KEY_KPDOT
                 value_type: button
       target_event:
           gamepad:
@@ -101,6 +67,26 @@ mapping:
       target_event:
           gamepad:
               button: RightPaddle1
+    - name: Left Dial
+      source_events:
+          - evdev:
+                event_type: REL
+                event_code: REL_HWHEEL
+                value_type: joystick_x
+      target_event:
+          gamepad:
+              dial:
+                  name: LeftStickDial
+    - name: Right Dial
+      source_events:
+          - evdev:
+                event_code: REL_WHEEL
+                event_type: REL
+                value_type: joystick_x
+      target_event:
+          gamepad:
+              dial:
+                  name: RightStickDial
 
 # List of events to filter from the source devices
 filtered_events: []

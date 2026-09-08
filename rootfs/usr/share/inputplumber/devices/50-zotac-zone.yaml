@@ -27,6 +27,7 @@ source_devices:
       vendor_id: 0x1ee9
       product_id: 0x1590
       interface_num: 3
+    unique: false
   - group: gamepad
     evdev:
       name: "{ZOTAC Gaming Zone Gamepad,Zotac Technology Limited ZOTAC GAMING ZONE}"
@@ -35,6 +36,29 @@ source_devices:
       phys_path: "*/input1"
       handler: event*
     capability_map_id: zone1
+    unique: false
+    # NOTE: with the zotac_zone_hid vendor driver bound, this node *declares* a
+    # full gamepad capability set but never actually emits button/axis events
+    # (verified with evtest 2026-09-08: pressing ABXY produces nothing here).
+    # The real gamepad stream is the kernel xpad node below. This entry is still
+    # worth keeping: force-feedback effect upload does succeed on this node.
+    # Belt and braces: this node declares BTN_TRIGGER_HAPPY5/6, which the
+    # built-in evdev mapping hard-codes to the same RightPaddle1/2 capability
+    # the keyboard source's KEY_END rule produces, and composite-device
+    # press-state tracking is keyed by capability with no per-source
+    # disambiguation. Since this node was measured to emit nothing at all the
+    # collision cannot currently fire, but excluding it here costs nothing and
+    # keeps the real paddle path (keyboard entry) as the only producer.
+    events:
+      exclude:
+        - "Gamepad:Button:RightPaddle1"
+        - "Gamepad:Button:RightPaddle2"
+  # The kernel xpad node on USB interface 0. This is where the real gamepad
+  # input (ABXY, sticks, triggers, D-pad, shoulders) actually comes from, both
+  # with and without the zotac_zone_hid vendor driver loaded — the vendor
+  # driver's own "Gamepad" node above declares those capabilities but never
+  # emits them. Without this entry the virtual target gets no standard buttons
+  # at all and Steam picks this node up as a second, raw controller.
   - group: gamepad
     evdev:
       name: ZOTAC Gaming Zone
@@ -42,6 +66,7 @@ source_devices:
       product_id: "1590"
       phys_path: "*/input0"
       handler: event*
+    unique: false
   - group: keyboard
     evdev:
       name: "{ZOTAC Gaming Zone Keyboard,Zotac Technology Limited ZOTAC GAMING ZONE Keyboard}"
@@ -49,6 +74,7 @@ source_devices:
       product_id: "1590"
       handler: event*
     capability_map_id: zone1
+    unique: false
   # TODO: Reevaluate if new firmware with ABS mode is added.
   #- group: mouse
   #  evdev:
@@ -61,10 +87,22 @@ source_devices:
   # here — verified on hardware that both still work natively when ungrabbed.
   #- group: mouse
   #  evdev:
-  #    name: "{ZOTAC Gaming Zone Mouse,ZOTAC Gaming Zone Dials,Zotac Technology Limited ZOTAC GAMING ZONE Mouse}"
+  #    name: "{ZOTAC Gaming Zone Mouse,Zotac Technology Limited ZOTAC GAMING ZONE Mouse}"
   #    vendor_id: "1ee9"
   #    product_id: "1590"
   #    handler: event*
+  # With the zotac_zone_hid vendor driver bound, the physical dials show up as
+  # their own dedicated evdev device (separate from the touchpad above) — grab
+  # it and translate via zone1's Left/Right Dial mapping. Must NOT share a name
+  # glob with the touchpad/Mouse entry above (see CLAUDE.md dial notes).
+  - group: mouse
+    evdev:
+      name: "{ZOTAC Gaming Zone Dials,Zotac Technology Limited ZOTAC GAMING ZONE Dials}"
+      vendor_id: "1ee9"
+      product_id: "1590"
+      handler: event*
+    capability_map_id: zone1
+    unique: false
   - group: imu
     iio:
       name: "{i2c-BMI0160:00,bmi260}"
@@ -72,16 +110,19 @@ source_devices:
         x: [0, -1, 0]
         y: [-1, 0, 0]
         z: [0, 0, -1]
+    unique: false
 
   #RGB
   - group: led
     udev:
       sys_name: zotac:rgb:spectra_zone_0
       subsystem: leds
+    unique: false
   - group: led
     udev:
       sys_name: zotac:rgb:spectra_zone_1
       subsystem: leds
+    unique: false
 
 # Optional configuration for the composite device
 options:
