@@ -1,6 +1,15 @@
 # InputPlumber Zotac Gaming Zone 버그 수정 - 작업 인계 문서
 
-## 상태 요약 (최신, 2026-09-04)
+## 상태 요약 (최신, 2026-09-08)
+
+**★★★ 벤더 커널 드라이버 `zotac_zone_hid`가 드디어 OGC에 실려서 이 기기에 들어왔다 (Bazzite
+44.20260907, 커널 7.2.3-ogc3.1, InputPlumber 0.78.0-5 → 0.79.0-4). 예고돼 있던 "실기기 재검증
+세션"을 이날 진행했고, 컨트롤러를 정상 동작 상태로 되돌렸다.** 상세는 아래 "★ 2026-09-08 세션"
+참고. 하드웨어 토폴로지·F16-F19 배치·진짜 게임패드 노드가 전부 바뀌었으므로, **이 문서와
+CLAUDE.md에서 09-08 이전에 쓰인 하드웨어 관련 서술은 전부 `hid-generic` 시절 기준임에 유의**할 것
+(CLAUDE.md는 09-08에 갱신 완료, 새 섹션 "After the vendor driver landed"가 정본).
+
+**(구) 상태 요약 (2026-09-04)**
 
 **★★ PR #664, #668 둘 다 머지 없이 CLOSED됨 (각각 09-02, 09-03) — pastaq가 주말 실기기 검증 후
 "벤더 드라이버를 OGC 커널에 번들 탑재하는 방향으로 간다"고 결정, 이 두 PR의 config/hidraw
@@ -944,6 +953,110 @@ CONTRIBUTING.md상 리뷰어에게 AI로 답변하는 것은 금지(고지 여�
    목적이 사라졌으므로, 로컬 `/etc` override 전용으로 계속 쓸지 사용자와 확인 필요.
 5. (이전부터 미착수) PR 코드 라인별 설명 듣기 — upstream 제출 계획은 종료됐지만 사용자가 요청한
    학습 목적 자체는 여전히 유효할 수 있음, 필요 여부 사용자 확인.
+
+## ★ 2026-09-08 세션 — 벤더 드라이버 도착, 실기기 재검증 및 컨트롤러 복구
+
+### 0. 발단
+
+사용자 신고: "Bazzite 업데이트 후 컨트롤러가 정상 동작하지 않는다. guide, QAM, screenshot, paddle
+버튼이 안 된다."
+
+### 1. 1차 원인 — 서비스가 masked 상태로 방치돼 있었음
+
+`inputplumber.service`가 09-07 21:35부터 23시간째 `masked` + `inactive`였다. 업데이트 재부팅 직후
+정상 기동했다가 2초 만에 누군가 `systemctl mask` + `stop`을 실행한 흔적(로그상 SIGTERM). 이전 세션의
+evtest 디버깅 절차(mask 후 복구)를 되돌리지 않은 것으로 보인다. `unmask` + `start`로 복구.
+**교훈: CLAUDE.md에 이미 있는 "작업 끝나면 반드시 unmask" 경고를 실제로 지킬 것.**
+
+### 2. ★★ 진짜 사건 — 벤더 드라이버가 들어와 있었다
+
+복구 후 로그를 보다 `driver: Some("zotac_zone_hid")`를 발견. `lsmod`/`modinfo`/`/sys/bus/hid/devices`
+전부 확인 결과 3개 HID 인터페이스 전부 벤더 드라이버 바인딩. 커널 sysfs에 `btn_m1/remap`,
+`btn_m2/remap`, `btn_a/remap`, `dpad_*/remap` 등도 노출됨. 즉 CLAUDE.md가 "언젠가 오면 재검증
+세션이 필요하다"고 예고한 바로 그 시점이었다. 동시에 InputPlumber 0.79.0 패키지가 **자체 네이티브
+Zotac Zone config**(패키지판 `50-zotac-zone.yaml` + `zone_type1.yaml`)를 갖고 들어왔다.
+
+### 3. 버그 3개를 순차적으로 찾아 고침
+
+**(a) 컴포짓 디바이스가 2개로 쪼개짐** — Steam에 "Xbox Elite 2"가 2개 잡히고 버튼이 엉킴.
+원인은 두 겹이었다:
+- `SourceDevice.unique`의 기본값이 `true`라, 이미 매칭된 entry에 다른 물리 장치가 또 매칭되면
+  기존 컴포짓에 합치지 않고 **새 컴포짓을 만든다**. → 전 entry에 `unique: false` 추가.
+- 더 결정적으로, **`/etc` override와 `/usr/share` 패키지 config가 둘 다 로드된다**(파일명 dedup
+  없음, `config/path.rs` + `manager.rs`의 `load_device_configs()` 확인). 우리 override엔 Dials
+  entry가 주석 처리돼 있었는데 패키지판엔 살아 있어서, Dials 장치가 override에서 매칭 실패 →
+  패키지 config로 폴백 → **패키지 config 기준의 두 번째 컴포짓 디바이스가 생성**됐다.
+  → override에 Dials entry를 추가해 패키지판을 완전히 커버하는 superset으로 만들자 재시작을
+  반복해도 항상 컴포짓 1개로 안정됨.
+
+**(b) F16-F19 배치가 통째로 바뀜** — `evtest`로 실측(InputPlumber 정지 후 `event3` 캡처):
+
+| 버튼 | 벤더 드라이버 하 | hid-generic 시절 |
+|---|---|---|
+| ZOTAC | `KEY_F16` | `KEY_F17` |
+| MORE/QAM | `KEY_F17` | `KEY_F18` |
+| HOME 짧게 | `KEY_F18` | `Meta+D` 코드 |
+| HOME 길게 | `KEY_F19` | `Ctrl+Alt+KP.` 코드 |
+| 패들 M2/M1 | `KEY_HOME`/`KEY_END` | 동일 |
+
+즉 **HOME 버튼이 더 이상 조합키를 안 보내고 깔끔한 F18/F19를 보낸다.** capability_map의
+chord entry 2개는 죽은 코드가 되어 제거하고, F17→QuickAccess / F18→Screenshot / F19→Guide로 교체.
+(`QuickAccess2`/`Keyboard`는 여전히 xbox-elite에서 evdev 출력이 없으므로 upstream 패키지판 그대로는
+안 씀.)
+
+**★ 이로써 PR #664 리뷰 논쟁이 사후적으로 정리됐다**: pastaq의 매핑 컨벤션 주장은 *벤더 드라이버가
+있는 하드웨어에서는 옳았고*, 이쪽 실측 반박은 *hid-generic 하드웨어에서 옳았다*. 서로 다른 커널을
+보고 있었던 것. 어느 쪽도 틀리지 않았다.
+
+**(c) ★ 가장 오래 걸린 함정 — 벤더 드라이버의 게임패드 노드는 아무것도 안 보낸다**
+
+`ZOTAC Gaming Zone Gamepad`(`event10`/`js0`)는 이름도 딱 맞고 `BTN_SOUTH`~`BTN_THUMBR`,
+`ABS_X/Y/Z/RX/RY/RZ`, `ABS_HAT0X/Y`, `BTN_TRIGGER_HAPPY1-6`까지 **완전한 게임패드 capability를
+선언**하며 FF 이펙트 업로드도 성공한다. 그런데 **ABXY를 눌러도 이벤트가 하나도 안 나온다**
+(`evtest`로 확정). 실제 게임패드 입력은 예전 그대로 커널 `xpad`의 `event6`/`js1`(USB 인터페이스 0,
+`phys_path */input0`)로만 흐른다.
+
+세션 초반에 내가 이 `*/input0` entry를 "벤더 드라이버가 게임패드를 제공하니 중복"이라고 판단해
+제거한 것이 표준 버튼(ABXY/스틱/트리거/D패드/숄더)이 죽은 직접 원인이었다. 증상이
+"Xbox Elite 2에선 특수 버튼만 되고, 옆에 raw로 뜬 ZOTAC 컨트롤러에선 기본 버튼이 된다"로 나타나서
+설정 오류로 안 보이고 마치 타겟 출력이 깨진 것처럼 보였다. entry 복원 후 정상화.
+
+### 4. 최종 상태 (사용자 확인: "이제 정상 동작하는 것 같습니다")
+
+컴포짓 디바이스 1개, 소스 = `hidraw2` + `event6`(xpad, 진짜 게임패드) + `event7`(Dials) +
+`event10`(벤더 게임패드, FF 전용) + `event3`(Keyboard) + `iio:device0`. 다이얼도 이번에 처음으로
+제대로 물렸다(`zone1`의 `REL_HWHEEL/REL_WHEEL → LeftStickDial/RightStickDial`).
+
+패들 hidraw 워크아라운드(`~/zotac-zone-tools/zotac-zone-paddles`)는 **이제 불필요** — 펌웨어가
+알아서 `KEY_HOME`/`KEY_END`를 보내고, 커널 sysfs remap 경로도 열려 있다. Steam 비-Steam 게임
+등록도 정리해도 된다.
+
+### 5. 삽질하면서 알게 된 것 (다음 세션 필독)
+
+- **`inputplumber device N test`의 Buttons 패널은 소스가 "선언한" capability만 보여준다.**
+  `Screenshot`/`QuickAccess`/`LeftPaddle1`처럼 capability_map 번역으로만 생기는 건 동작해도 박스가
+  안 뜬다. 반대로 `RightPaddle1/2` 박스는 `event10`이 `BTN_TRIGGER_HAPPY5/6`을 선언해서 뜨지만
+  실제로 켜지는 건 키보드 경로다. **패널에 없다/반응 없다를 "매핑이 깨졌다"로 읽지 말 것.**
+- `filtered_events:`는 모든 capability_map YAML에 있지만 **`CapabilityMapConfigV2`에 없는 필드다.**
+  serde가 그냥 무시한다. 필터링은 source_devices entry의 `events: {include/exclude}`로 해야 하고,
+  이건 raw evdev 코드가 아니라 **번역된 Capability 문자열**(`"Gamepad:Button:RightPaddle1"`)로
+  매칭한다.
+- InputPlumber 코어 버그 후보: `target/mod.rs` ~L551에서 타겟의 `write_event`/`emit()`이 한 번
+  실패하면 **그 타겟의 `run()` 루프가 영구히 죽는다**(로그는 `debug` 한 줄, 재생성 없음).
+- `flatpak-spawn --host sudo`의 `ksshaskpass: Unable to parse phrase` 경고는 **무해하다**(명령은
+  실행됨). 단 `sudo bash -c '...'`로 감싸면 진짜로 깨진다.
+- 이번 세션에서 백그라운드 캡처(journalctl -f, timeout evtest)로 사용자 버튼 입력과 타이밍을
+  맞추려던 시도는 계속 실패했다. **사용자 본인 터미널에서 포그라운드로 돌리게 하고 결과를 붙여받는
+  방식이 유일하게 잘 됐다.**
+
+### 6. 다음 세션 TODO
+
+1. 재부팅 후에도 컴포짓 디바이스 1개 + 전 버튼 정상인지 한 번 더 확인(이번엔 재시작만 반복 검증함).
+2. 다이얼 실제 동작 확인 — config는 물렸지만 실기기에서 좌/우 다이얼을 돌려본 적은 아직 없음.
+3. `~/zotac-zone-tools/zotac-zone-paddles` 및 Steam 비-Steam 게임 등록 정리(이제 불필요).
+4. upstream 이슈 후보 4건 정리해서 올릴지 결정: 타겟 `run()` 루프 영구 사망, `unique` 기본값 함정,
+   `filtered_events` 무시, 동명 config 중복 로드. (PR은 안 내더라도 이슈는 가치 있음)
+5. 미착수로 계속 남아있는 것: PR 코드 라인별 설명 듣기.
 
 ---
 

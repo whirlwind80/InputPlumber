@@ -125,6 +125,41 @@ Device/profile/capability-map configs are loaded from multiple directories in pr
 override). When debugging a specific device's matching behavior, check both locations, since a
 stale or missing `/etc` override silently falls back to the packaged default.
 
+⚠️ **"Overlay" here does NOT mean the `/etc` file shadows/replaces the same-named packaged file.**
+`get_multidir_sorted_files()` (`src/config/path.rs`) *concatenates* the directory listings and only
+uses directory priority as a tiebreaker when sorting by filename — it never drops an entry.
+`load_device_configs()` (`src/input/manager.rs`) then parses every path with no dedup by filename
+or by the parsed `name:` field, so `/etc/inputplumber/devices.d/50-foo.yaml` and
+`/usr/share/inputplumber/devices/50-foo.yaml` end up as **two separate `CompositeDeviceConfig`
+entries with the same `name:`**. Per-device matching returns on the first config that matches, and
+`/etc` sorts first, so this is usually invisible — until some real device matches a
+`source_devices` entry that exists only in the *packaged* copy (e.g. an entry the override has
+commented out). That device then finds no home in the `/etc`-based composite device, falls through,
+matches the packaged config instead, and **spawns a whole second CompositeDevice** (with its own
+duplicate set of target devices — two virtual controllers in Steam, and two composite devices
+fighting over the same physical sources). An `/etc` override must therefore be a **matching
+superset** of the packaged config's `source_devices` coverage, not a subset. Since which source
+lands in which instance depends on udev arrival order, the split looks nondeterministic across
+restarts even though the manager's own processing is fully serialized.
+
+Related per-source-entry knobs in `config::SourceDevice` (`src/config/mod.rs`), all easy to miss:
+
+- **`unique`** (defaults to **`true`**): if a second physical device matches a `source_devices`
+  entry that an existing composite device already consumed, the default *rejects* it and creates
+  another composite device instead of merging. Set `unique: false` on any entry that can legitimately
+  match more than one node (several shipped configs — `50-legion_go.yaml`, `50-rog_ally.yaml`,
+  `60-flydigi_vader_4_pro.yaml` — already do this).
+- **`events: {include: [...], exclude: [...]}`**: per-source event filtering, applied in
+  `SourceDriver` (`src/input/source/mod.rs`). It filters on the **translated `Capability` string**
+  (`Capability::from_str`, e.g. `"Gamepad:Button:RightPaddle1"`, `"Keyboard:KeyF16"`), *not* raw
+  evdev code names, and unparseable strings are silently dropped by a `filter_map`. `exclude: ["*"]`
+  plus an `include:` list is the shipped idiom for "only these events" (see `50-ayaneo_*.yaml`).
+- `blocked`, `ignore`, `passthrough` also exist and are documented inline in that struct.
+
+Note also that `filtered_events:` appears at the bottom of every shipped capability-map YAML but is
+**not a field on `CapabilityMapConfigV2`** — serde ignores it. It does nothing; use the per-source
+`events.exclude` above instead.
+
 ### Adding support for a new device
 
 Typically requires: a `CompositeDeviceConfig` YAML in `rootfs/usr/share/inputplumber/devices/`
@@ -207,10 +242,17 @@ config/hidraw-level fix can't fully cover this device (the gamepad reportedly fa
 all, without a udev rule for `xpad`, on hardware without the vendor kernel driver present) and that
 the real fix is to ship the vendor kernel driver (`zotac_zone_hid`,
 [OpenZotacZone/ZotacZone-Drivers](https://github.com/OpenZotacZone/ZotacZone-Drivers)) in OGC
-(Universal Blue's kernel) instead. **This means the local workarounds below now need to be
-maintained indefinitely** — there is no PR-merge date to wait out anymore, only "until OGC actually
-bundles the vendor driver," which is untracked as of this writing. Full background (the review
-back-and-forth, the closing comments, exact reasoning) is in `handoff.md`'s 2026-09-04 session
+(Universal Blue's kernel) instead.
+
+**★ That happened: OGC shipped `zotac_zone_hid` in the Bazzite 44.20260907 update (kernel
+`7.2.3-ogc3.1.fc44`, InputPlumber bumped 0.78.0-5 → 0.79.0-4), and it was first seen on this machine
+on 2026-09-08.** The re-verification session that the rest of this document anticipated has been
+done — see "After the vendor driver landed" below for what actually changed, which is a lot: the
+hardware's evdev topology, the F16-F19 button codes, and which node the real gamepad data comes from
+are all different now. Sections written before that date describe the old `hid-generic` world and
+are kept only for history; where they conflict with "After the vendor driver landed", that section
+wins. Full background on the (still closed) PRs — the review back-and-forth, the closing comments,
+exact reasoning — is in `handoff.md`'s 2026-09-04 session
 (tracked on this fork's `claude` branch only — see the fork-only note at the top; it is *not*
 untracked) — that file is a running session-to-session handoff log (current PR/review status,
 in-progress experiments, next-session TODOs); durable facts about the codebase or this device belong
@@ -223,7 +265,20 @@ This checkout runs inside a toolbox (`inputplumber-dev`). Consequences:
   `/etc/inputplumber/...`, since the toolbox's own `/etc` is the *container's*, not the host's.
 - `sudo` does not work non-interactively inside the toolbox session — hand any command needing
   `sudo` to the user to run themselves (e.g. via Claude Code's `!` prefix) rather than attempting it
-  directly.
+  directly. In practice `flatpak-spawn --host sudo <cmd>` *does* succeed while the host's sudo
+  timestamp is still warm (i.e. shortly after the user has authenticated once), which makes it look
+  reliable and then fail later — don't build a long unattended sequence on it.
+- Every `sudo` run through `flatpak-spawn --host` prints
+  `ksshaskpass: Unable to parse phrase "[sudo] password for ..."` first. **That line is noise, not a
+  failure** — the command still runs. But wrapping the payload as `sudo bash -c '...'` *does* break
+  (the askpass helper takes over and the quoted script gets mangled); keep each `sudo` invocation a
+  single plain command instead.
+- Claude Code's `!` prefix runs inside the toolbox, so a bare `systemctl ...` there fails with
+  "Failed to connect to system scope bus"; it needs the same `flatpak-spawn --host` prefix.
+- Driving an interactive TUI (`inputplumber device N test`) or a long `evtest` capture through this
+  session's tooling does not work well — backgrounded captures and the user's button presses never
+  lined up. Hand the user a plain foreground command in their own terminal and ask them to report
+  what they saw; that was the only reliable loop.
 
 - **PR #664** (closed unmerged) — Steam/QAM buttons, View button, duplicate composite device, the
   dial capability mappings that were swallowing the left touchpad's scroll events, and the physical
@@ -248,7 +303,13 @@ copies; re-copy them after changing either, since InputPlumber reads the deploye
 than the repo. Note the `.d` suffix: overrides are only read from `devices.d/` and
 `capability_maps.d/`, never from `devices/` or `capability_maps/`.
 
-### Hardware reference (0x1ee9:0x1590, all `hid-generic`)
+### Hardware reference (0x1ee9:0x1590) — pre-vendor-driver (`hid-generic`), HISTORICAL
+
+⚠️ **Superseded as of 2026-09-08.** All three HID interfaces now bind `zotac_zone_hid`, which
+changes the evdev node layout *and* the button→keycode table below. Read "After the vendor driver
+landed" further down for the current values; this subsection is kept because the hidraw-level facts
+(report IDs, the config protocol, the dial bit layout) are still accurate and because the machine
+could in principle boot a kernel without the driver again.
 
 | hidraw node | USB interface | Contents |
 |---|---|---|
@@ -287,7 +348,8 @@ and swiping *across* the strip's own axis makes it emit vertical ticks in an err
 direction (clearly visible as alternating `+1`/`-1` in the raw captures) rather than nothing. That
 erratic vertical scrolling is what reads as "wrong direction". Cite the code bug from the code only.
 
-Button → signal facts:
+Button → signal facts (⚠️ **the F-key assignments below shifted by one under the vendor driver** —
+see "After the vendor driver landed"; the hidraw scancodes are unchanged):
 - Steam button → `KEY_F17` (hidraw0 rid=2: `02 09 00 6c`) → `Guide`
 - QAM button → `KEY_F18` (`02 09 00 6d`) → `QuickAccess`
 - View button → `BTN_SELECT` (event14)
@@ -382,65 +444,111 @@ python3 ~/zotac-zone-tools/zotac-zone-paddles
 
 It finds the right hidraw node itself and needs no root. `~/zotac-zone-tools/zotac-zone-paddles.sh`
 is a wrapper for registering it as a non-Steam game, so it can be launched from Game Mode.
+⚠️ **Obsolete since 2026-09-08** — the vendor driver applies the paddle mapping itself now; see the
+next section.
 
-### After OGC ships the vendor driver — remove the workarounds
+### After the vendor driver landed (2026-09-08) — current state of this machine
 
-Since both PRs were closed unmerged (see above), there's no InputPlumber-side fix to wait for
-anymore. The thing to watch for instead is OGC (Universal Blue's kernel) bundling the vendor kernel
-driver (`zotac_zone_hid`) — once that's in place, the kernel itself exposes the gamepad/dials/paddles
-properly and these config/hidraw-level workarounds become unnecessary (and possibly counterproductive
-— see the `phys_path` note below).
+`zotac_zone_hid` arrived with Bazzite `44.20260907` (kernel `7.2.3-ogc3.1.fc44`), bound to all three
+HID interfaces (`0003:1EE9:1590.0001/.0002/.0003`, confirmed via `lsmod | grep zotac` and
+`readlink /sys/bus/hid/devices/*1EE9:1590*/driver`). InputPlumber went to `0.79.0-4` in the same
+update and now **ships its own native `50-zotac-zone.yaml` and `zone_type1.yaml`** built for the
+vendor-driver topology — which does *not* make the `/etc` override redundant (see below).
 
-There is currently no known automated check for "has OGC shipped the driver yet" (unlike the old
-`grep -c "phys_path" ...` check, which tested for an upstream InputPlumber fix that no longer exists).
-Watch OGC/Universal Blue release notes or kernel package changelogs instead. **Note**: even once the
-vendor driver is present, its `zotac_zone_hid` module needs to actually be loaded/bound (not
-blacklisted) for this to matter — check with `modinfo zotac_zone_hid` and `lsmod | grep zotac`.
+**Current evdev/hidraw topology** (all four vendor nodes hang off HID interface `.0001`, so they all
+report `phys_path` `*/input1` — `phys_path` no longer distinguishes them, only the name does):
 
-The `/etc` overrides take priority over the packaged configs *permanently*, so once the driver
-lands, they'd keep shadowing whatever InputPlumber does by default for this device unless explicitly
-removed:
+| Node (numbers move — match by name) | Name | Notes |
+|---|---|---|
+| `event3` | `ZOTAC Gaming Zone Keyboard` | F16-F19 + `KEY_HOME`/`KEY_END` paddles. **All the special buttons come from here.** |
+| `event7` | `ZOTAC Gaming Zone Dials` | The real dials at last: `REL_HWHEEL` (left) / `REL_WHEEL` (right), own device, separate from the touchpad |
+| `event9` | `ZOTAC Gaming Zone Mouse` | Touchpads (`REL_X`/`REL_Y`/`REL_WHEEL`). Left ungrabbed on purpose |
+| `event10` / `js0` | `ZOTAC Gaming Zone Gamepad` | ⚠️ **Declares a full gamepad capability set but never emits any of it** |
+| `event6` / `js1` | `ZOTAC Gaming Zone` | Kernel `xpad` on USB **interface 0** (`phys_path` `*/input0`). **This is still where the real ABXY/sticks/triggers/D-pad/shoulders come from.** |
+| `/dev/hidraw2` | — | Config interface, now `crw-------` (InputPlumber hides it) |
 
-```sh
-sudo rm -rf /etc/inputplumber
-sudo systemctl restart inputplumber
-rm -rf ~/zotac-zone-tools          # scripts are then obsolete too
-```
+⚠️ **The single most expensive trap of the re-verification session**: the vendor driver's own
+`ZOTAC Gaming Zone Gamepad` node looks exactly like the device you want — right name, full
+`BTN_SOUTH`…`BTN_THUMBR` + `ABS_X/Y/Z/RX/RY/RZ` + `ABS_HAT0X/Y` + `BTN_TRIGGER_HAPPY1-6` capability
+list, and it even accepts force-feedback effect uploads — but pressing ABXY on it produces **nothing
+at all** (verified with `evtest` on 2026-09-08 with InputPlumber stopped). The physical gamepad
+reports still only arrive on the `xpad` node. So the config needs **both**: `*/input1` for the vendor
+node (useful for FF) and `*/input0` for the xpad node (the actual input). Dropping the `*/input0`
+entry as "redundant now that the vendor driver exposes a gamepad" leaves the virtual controller with
+no standard buttons at all, while Steam happily picks the ungrabbed xpad node up as a *second*
+controller that does work — which reads as "some buttons work, some don't" rather than as a config
+error. pastaq's 2026-09-02 report that the gamepad enumerates on `*/input3` with the driver loaded
+did **not** reproduce here; on this machine it is `*/input0` (xpad) and `*/input1` (vendor).
 
-and remove the non-Steam shortcut from Steam.
+**Button → signal, current values.** The vendor driver hands out clean F16-F19 presses, one per
+button, and the `hid-generic`-era oddities are gone — the physical HOME button no longer emits
+`Meta+D` / `Ctrl+Alt+KP.` chords at all, so the `mapping_type: evdev: chord` entries that used to
+carry it are dead weight and have been removed:
 
-⚠️ **Open question, unverified on this machine**: `pastaq`'s 2026-09-02 review on PR #664 (before
-closing it) reported that with the vendor driver loaded, the gamepad enumerates on
-`phys_path: "*/input3"` rather than `"*/input1"` (`50-zotac-zone.yaml`'s current `phys_path` glob
-only covers `input1`). If the vendor driver ever does get bundled and loaded on this machine, the
-gamepad `source_devices` entry's `phys_path` may need broadening to
-`"{*/input1,*/input3}"` (or similar) to keep matching — this was reported from pastaq's own hardware,
-not reproduced here, since this machine has never run the vendor driver.
+| Button | Keycode now | Keycode under `hid-generic` | Mapped to |
+|---|---|---|---|
+| ZOTAC | `KEY_F16` | `KEY_F17` | `Guide` |
+| MORE / QAM | `KEY_F17` | `KEY_F18` | `QuickAccess` |
+| HOME short | `KEY_F18` | `Meta`+`D` chord | `Screenshot` |
+| HOME long | `KEY_F19` | `Ctrl`+`Alt`+`KP.` chord | `Guide` |
+| Left paddle (M2) | `KEY_HOME` | same | `LeftPaddle1` |
+| Right paddle (M1) | `KEY_END` | same | `RightPaddle1` |
 
-**Don't treat "the driver landed" as "blindly revert everything to stock" — sort the local work into
-three buckets instead:**
+This retroactively settles the whole PR #664 review argument: pastaq's proposed convention
+(`F16→Guide`, `F17→QuickAccess`, `F18`/`F19` for HOME) was correct **for vendor-driver hardware**,
+and the contradicting measurements from this machine were correct **for `hid-generic` hardware**.
+Neither side was wrong; they were describing different kernels. Upstream's packaged `zone_type1.yaml`
+uses exactly that convention. The local override keeps `F18→Screenshot` / `F19→Guide` instead of
+upstream's `QuickAccess2`/`Keyboard` only because those two capabilities still produce no evdev
+output on the `xbox-elite` target (`event_codes_from_capability` returns an empty vec; `xpad.rs`'s
+`write_event` only special-cases `QuickAccess` and `Screenshot`).
 
-1. **Hidraw/userspace workarounds that only exist because the vendor kernel module is absent** —
-   the `zotac-zone-paddles` script (hidraw `CMD_SET_BUTTON_MAPPING`) and the withdrawn dial-polling
-   approach. These become obsolete on their own once the driver is loaded: paddles get remapped
-   through InputPlumber's existing upstream sysfs path (`configure_via_sysfs()`,
-   `btn_m2/remap/keyboard` etc. — this is what the vendor driver's sysfs interface was for all
-   along), and dials appear as their own real evdev device (`wheel_input`), to which the
-   already-written `zone_type1_dial.yaml` (`zone1_dial`) map can simply be attached as that source's
-   `capability_map_id`. No revert needed — just stop invoking the workaround script and, for dials,
-   finish wiring the existing map to the new source instead of writing new code.
-2. **InputPlumber config/matching fixes that are independent of the vendor driver** — the evdev
-   name-glob fix (`c00deba`), the duplicate-composite-device fix (`193328a`), the F17/F18 swap
-   (`399510c`), the touchpad `source_devices` removal, and the HOME-chord
-   `Screenshot`/`Guide` mapping. These fix how InputPlumber matches *this device's config* against
-   what the kernel reports, regardless of whether the vendor driver is present — and since neither PR
-   merged, the packaged config upstream still has these bugs. **Don't revert these outright**, but
-   don't assume they still apply unchanged either: vendor-driver presence can change what the kernel
-   reports (see the `phys_path`/`input3` note above), so re-verify each field against real hardware
-   once the driver is actually loaded here, and adjust only what's actually changed.
-3. **This documentation** (`CLAUDE.md`, `handoff.md`) — not something to revert; keep it as the
-   session record and add a new dated section once the driver actually lands here, covering what was
-   re-tested and what changed.
+**Paddles no longer need the hidraw workaround.** `KEY_HOME`/`KEY_END` arrive from the firmware
+without anything writing a mapping first, and the kernel now exposes the remap knobs directly at
+`/sys/.../1-4:1.3/0003:1EE9:1590.0003/btn_m{1,2}/remap` (plus `btn_a/remap`, `dpad_*/remap`, …), which
+is the path `configure_via_sysfs()` was written for. `~/zotac-zone-tools/zotac-zone-paddles` and its
+Steam shortcut are obsolete; the "re-run after power loss" instructions above no longer apply.
 
-In short: expect a **re-verification session on real hardware** when the driver actually shows up on
-this machine, not a blind rollback.
+**Dials work now** and are wired up: the `ZOTAC Gaming Zone Dials` node is a `group: mouse` source
+with `capability_map_id: zone1`, and `zone_type1.yaml` carries `REL_HWHEEL → LeftStickDial` /
+`REL_WHEEL → RightStickDial`. The old standing warning still holds in spirit — that entry's name glob
+must never also match `ZOTAC Gaming Zone Mouse`, or the touchpad's genuine scroll gets translated
+into dial events again.
+
+**Why the `/etc` override still exists.** Because both it and the packaged config load
+simultaneously (see "Config loading and overlay"), the override must stay a matching *superset* of
+the packaged `source_devices` list or the uncovered device spawns a second composite device. It also
+still carries three things the packaged config does not: the `*/input0` xpad entry, `unique: false`
+on every entry, and the `Screenshot`/`Guide` targets for HOME. Removing `/etc/inputplumber` wholesale
+would currently *lose* working behaviour, so the old "delete the overrides once the driver lands"
+instruction is withdrawn.
+
+**Known-bad states and how they present** (all seen during this session, worth recognising fast):
+
+- Two `Zotac Zone` composite devices in `inputplumber devices list` → Steam shows two "Xbox Elite 2"
+  controllers, buttons appear stuck/ghosting because two composite devices fight over the same
+  sources. Cause is always coverage/`unique`, per "Config loading and overlay".
+- One composite device, but the virtual controller has *only* the special buttons → the `*/input0`
+  xpad source is missing or ungrabbed.
+- A raw `ZOTAC Gaming Zone` controller visible in Steam alongside the virtual one → same thing; the
+  xpad node isn't being grabbed.
+- `inputplumber device N test` never shows a box for `Screenshot`, `QuickAccess`, `LeftPaddle1` even
+  when they work, because the panel is built from each source's *declared* capabilities, not from
+  capability-map output. `RightPaddle1/2` boxes *do* appear (the vendor gamepad node declares
+  `BTN_TRIGGER_HAPPY5/6`) yet only light up via the keyboard path. Never read that panel as proof a
+  mapping is broken.
+
+**Upstream issue candidates found along the way** (none reported yet):
+
+- `src/input/target/mod.rs` (~L551): a single `Err` from a target's `write_event`/`emit()` breaks the
+  target's whole `run()` loop permanently, logging only at `debug` level, with no respawn — one bad
+  event can silently kill a controller for the rest of the session.
+- `unique` defaulting to `true` turns "an entry matched a second device" into "spawn a duplicate
+  composite device", which is a surprising default and hard to diagnose from the logs.
+- `filtered_events:` is present in every shipped capability-map YAML but is not a field on
+  `CapabilityMapConfigV2` — silently ignored.
+- Same-named configs in `/etc` and `/usr/share` are both loaded with no dedup, so an override that is
+  a *subset* of the packaged config silently produces duplicate composite devices.
+- The `REL_WHEEL`/`REL_HWHEEL` → single `Mouse::Wheel` collapse noted earlier in this document is
+  still present in 0.79.0 and now actually matters, since this device finally has a real
+  horizontal-axis source (the left dial).
