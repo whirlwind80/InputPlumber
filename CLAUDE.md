@@ -279,6 +279,13 @@ This checkout runs inside a toolbox (`inputplumber-dev`). Consequences:
   session's tooling does not work well — backgrounded captures and the user's button presses never
   lined up. Hand the user a plain foreground command in their own terminal and ask them to report
   what they saw; that was the only reliable loop.
+- ⚠️ **The checked-out `claude` branch is not the version that is installed.** `claude` sits on
+  0.78.1 while the packaged daemon this machine actually runs is newer (0.79.0-4 as of 2026-09-09),
+  and local `main` tracks `upstream/main` (0.79.2). Reading `src/...` from the working tree to
+  explain live behaviour has already produced a wrong-version answer once. Read the installed
+  version's code instead: `git show main:src/input/target/xpad.rs` or `git show v0.79.0:<path>`.
+  Local `main` is kept fast-forwarded to `upstream/main` for exactly this; **never merge `main`
+  into `claude`** (that is what would leak these fork-only docs toward upstream).
 
 - **PR #664** (closed unmerged) — Steam/QAM buttons, View button, duplicate composite device, the
   dial capability mappings that were swallowing the left touchpad's scroll events, and the physical
@@ -433,19 +440,16 @@ at `[0x06]` (`0` = OK). GET-command response data generally starts at `[0x05]`, 
 `GET_DEVICE_INFO`'s, which in practice starts at `[0x06]` — one byte off from what the kernel
 driver source documents.
 
-### Re-binding the paddles
+### Re-binding the paddles — HISTORICAL, no longer needed
 
-Any full power loss clears the paddle mapping, because the installed InputPlumber predates #668 and
-so nothing re-applies it at startup. Re-run:
-
-```sh
-python3 ~/zotac-zone-tools/zotac-zone-paddles
-```
-
-It finds the right hidraw node itself and needs no root. `~/zotac-zone-tools/zotac-zone-paddles.sh`
-is a wrapper for registering it as a non-Steam game, so it can be launched from Game Mode.
-⚠️ **Obsolete since 2026-09-08** — the vendor driver applies the paddle mapping itself now; see the
-next section.
+⚠️ **Obsolete since 2026-09-08** — the vendor driver applies the paddle mapping itself now; see
+"After the vendor driver landed" below. Under `hid-generic`, any full power loss cleared the
+paddle mapping and `~/zotac-zone-tools/zotac-zone-paddles` (plus its `.sh` wrapper, registered as
+a non-Steam game so it could be launched from Game Mode) re-applied it over the vendor config
+protocol. **Both scripts were retired to `~/zotac-zone-tools/obsolete/` on 2026-09-09** and cannot
+work any more regardless: InputPlumber holds `/dev/hidraw2` open and the node is now root-only.
+The protocol implementation inside them is still a useful reference, as are `crc.py`, `setmap.py`
+and `clearmap.py` alongside them.
 
 ### After the vendor driver landed (2026-09-08) — current state of this machine
 
@@ -507,13 +511,42 @@ output on the `xbox-elite` target (`event_codes_from_capability` returns an empt
 without anything writing a mapping first, and the kernel now exposes the remap knobs directly at
 `/sys/.../1-4:1.3/0003:1EE9:1590.0003/btn_m{1,2}/remap` (plus `btn_a/remap`, `dpad_*/remap`, …), which
 is the path `configure_via_sysfs()` was written for. `~/zotac-zone-tools/zotac-zone-paddles` and its
-Steam shortcut are obsolete; the "re-run after power loss" instructions above no longer apply.
+Steam shortcut are obsolete; the "re-run after power loss" instructions above no longer apply. The
+scripts were moved to `~/zotac-zone-tools/obsolete/` on 2026-09-09.
 
-**Dials work now** and are wired up: the `ZOTAC Gaming Zone Dials` node is a `group: mouse` source
-with `capability_map_id: zone1`, and `zone_type1.yaml` carries `REL_HWHEEL → LeftStickDial` /
-`REL_WHEEL → RightStickDial`. The old standing warning still holds in spirit — that entry's name glob
-must never also match `ZOTAC Gaming Zone Mouse`, or the touchpad's genuine scroll gets translated
-into dial events again.
+**Dials: the physical dials work, but the configured dial mapping is a silent no-op** (measured
+2026-09-09). Two independent paths leave the same rid=3 dial pulse, and only one survives:
+
+- The vendor driver feeds rid=3 into its own `ZOTAC Gaming Zone Dials` evdev node as
+  `REL_HWHEEL`/`REL_WHEEL` (`zotac-zone-hid-core.c:91-101`; the node declares exactly `EV=5`,
+  `REL=140`). That node is a `group: mouse` source with `capability_map_id: zone1`, and
+  `zone_type1.yaml` translates it to `LeftStickDial`/`RightStickDial` — **which then reaches
+  nothing.** `TargetDeviceSet::write_event` (`src/input/composite_device/targets.rs:303-312`)
+  routes by capability lookup and drops anything no attached target declares, logging one `trace`
+  line. `xbox-elite` declares no relative axes at all (`xpad.rs:148-156`), and the mouse/keyboard
+  targets declare only `Mouse::*`/`Keyboard::*`, so `Gamepad:Dial:*` is absent from the composite
+  device's `TargetCapabilities` and every dial event dies there. Because the map consumes them,
+  they don't reach the virtual mouse as plain `Mouse:Wheel` either.
+- The same pulse *also* reaches the `ZOTAC Gaming Zone Keyboard` node as `KEY_VOLUMEUP` /
+  `KEY_BRIGHTNESSUP`, which InputPlumber's keyboard target passes straight through. **That is what
+  actually happens when you turn a dial: left = volume, right = screen brightness.**
+
+Upstream's packaged config has the identical dead mapping (same `target_devices`, same rules), so
+this is not a local misconfiguration. Don't "fix" the YAML — nothing is wrong with it; making dials
+reach the gamepad would need a target that declares `Gamepad::Dial`, which `xbox-elite` will never
+be. `/etc/inputplumber/capability_maps.d/zone_type1_dial.yaml` (id `zone1_dial`) is an unreferenced
+leftover from the `hid-generic` era; no `source_devices` entry points at it.
+
+A trap this exposes in general: a target module's `translate_event()` can look perfectly capable of
+handling an event — the mouse target's is generic and its virtual device really does declare
+`REL_WHEEL`/`REL_HWHEEL` — while the router never delivers it. When a mapping "does nothing", check
+`TargetCapabilities` on the composite device over DBus **before** suspecting the map, the source, or
+the hardware. Note also that `busctl monitor` on the InputPlumber service shows nothing useful: the
+attached `dbus0` target only receives events in intercept mode, so a capture of a working button
+press comes back empty and proves nothing.
+
+The old standing warning still holds — that entry's name glob must never also match `ZOTAC Gaming
+Zone Mouse`, or the touchpad's genuine scroll gets translated into dial events again.
 
 **Why the `/etc` override still exists.** Because both it and the packaged config load
 simultaneously (see "Config loading and overlay"), the override must stay a matching *superset* of

@@ -1219,11 +1219,20 @@ xpad 소스 누락, raw 컨트롤러 노출은 재부팅 후에도 재발하지 
 
 1. ~~리부트 후 컴포짓 1개 + 전 버튼 정상인지 확인~~ → **완료(이 세션). 정상.**
 2. ~~다이얼 실동작 확인~~ → **완료(이 세션).** 볼륨/밝기로 동작, capability 매핑은 no-op.
-3. `~/zotac-zone-tools/zotac-zone-paddles` 및 Steam 비-Steam 게임 등록 정리(이제 불필요).
+3. ~~`~/zotac-zone-tools/zotac-zone-paddles` 정리~~ → **완료(이 세션).**
+   `~/zotac-zone-tools/obsolete/`로 이동(삭제 아님, 벤더 프로토콜 CRC/프레임 구현이 참고 가치가
+   있어서) + 이유를 적은 README 동봉. CLAUDE.md의 두 군데 경로 서술도 갱신함.
+   ⚠️ **Steam 비-Steam 게임 등록은 아직 남아 있음** — `shortcuts.vdf`에 `zotac-zone-paddles.sh`
+   항목 존재 확인. 바이너리 VDF이고 Steam 실행 중엔 덮어써지므로 직접 편집하지 않았다. 사용자가
+   Steam 라이브러리에서 우클릭 → 관리 → 비-Steam 게임 제거로 지워야 함. (스크립트를 옮겼으므로
+   지금 실행하면 실패한다 — 어차피 hidraw2가 root 전용 + InputPlumber 점유라 동작 불가)
 4. upstream 이슈 후보 **5건** 정리해서 올릴지 결정(§4에서 1건 추가됨).
 5. 벤더 게임패드 entry의 `phys_path: "*/input1"` 제약 제거 검토 — 우선순위 낮음.
-6. `upstream/main`을 받아 로컬 `main` 동기화(체크아웃 0.78.1 vs 설치 0.79.0-4 불일치).
-   **`claude` 브랜치에 머지 금지.**
+6. ~~`upstream/main`을 받아 로컬 `main` 동기화~~ → **완료(이 세션).**
+   `git fetch upstream main:main`으로 fast-forward: `23f84b7`(0.78.1) → `8e3c86b`(0.79.2).
+   `claude` 브랜치는 손대지 않음. **여전히 체크아웃(claude)은 0.78.1 코드**이므로, 설치판 동작을
+   설명할 땐 작업트리가 아니라 `git show main:<path>` 또는 `git show v0.79.0:<path>`로 읽을 것
+   (CLAUDE.md 개발환경 섹션에 경고 추가함). **`main`을 `claude`에 머지하지 말 것.**
 7. 미착수로 계속 남아있는 것: PR 코드 라인별 설명 듣기.
 
 ---
