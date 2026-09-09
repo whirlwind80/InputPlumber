@@ -66,6 +66,19 @@ source_devices:
   # driver's own "Gamepad" node above declares those capabilities but never
   # emits them. Without this entry the virtual target gets no standard buttons
   # at all and Steam picks this node up as a second, raw controller.
+  #
+  # Unlike the vendor entry above, this one keeps its phys_path pin. The
+  # interface number in it comes from the device's USB configuration
+  # descriptor, not from the kernel, so it does not move across kernel or
+  # driver updates on this hardware, and it records where the real gamepad was
+  # measured to be. ⚠️ But it is exactly what would go wrong first on a unit
+  # that enumerates xpad on another interface (one */input3 report exists):
+  # if the standard buttons (ABXY/sticks/triggers/D-pad/shoulders) are missing
+  # while the special buttons still work, and Steam shows a second raw "ZOTAC
+  # Gaming Zone" controller, drop this phys_path line before suspecting
+  # anything else. The name is a whole-string glob match and resolves to this
+  # node alone, so removing the pin is safe from an over-matching standpoint -
+  # it just has not been tested on hardware.
   - group: gamepad
     evdev:
       name: ZOTAC Gaming Zone
