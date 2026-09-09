@@ -17,6 +17,9 @@
 타겟도 `Gamepad:Dial:*`을 선언하지 않기 때문. 하드웨어·벤더 드라이버·config는 전부 정상.
 upstream 패키지 config도 같은 죽은 매핑을 갖고 있다. 상세는 "★ 2026-09-09 세션" §1-5 참고.
 
+**upstream 이슈 후보 6건 검증·정리 완료(§12)** — 그중 하나("매핑된 capability가 `device N test`에
+안 뜬다")는 upstream이 이미 `#690`으로 등록해둔 알려진 v2 맵 버그였다. 남은 건 실제 제출뿐.
+
 **이 밖에 09-09 세션에서 한 것**: 벤더 게임패드 entry의 `phys_path: "*/input1"` 제거(TODO 5,
 이름만으로 매칭 — 검증 완료), 패들 스크립트 `~/zotac-zone-tools/obsolete/`로 퇴역(TODO 3),
 로컬 `main`을 `upstream/main`(0.79.2)에 동기화(TODO 6), config 주석을 PR 리뷰 기준으로 축약,
@@ -351,7 +354,40 @@ PR은 닫혔지만 upstream은 0.79.0에서 자체 Zotac config를 냈고, 우�
 터치패드·`unique: false`는 그대로 채택했다. **남은 진짜 이견은 HOME 버튼 두 개뿐이며, 그것도
 "OGUI intercept를 전제하느냐"의 차이라 옳고 그름이 아니라 전제의 차이다.**
 
-### 12. 다음 세션 TODO (09-08 목록에서 갱신)
+### 12. upstream 이슈 후보 정리 (TODO 4) — 6건 검증 완료, 1건은 이미 등록돼 있었음
+
+전부 **로컬 `main`(0.79.2)** 기준으로 재확인했다(작업트리 0.78.1로 읽지 말 것). 중복 제보를 피하려고
+`gh search issues`로 upstream 기존 이슈도 확인했다.
+
+**★ 먼저: `#690`이 우리 관측 하나를 이미 커버한다.**
+`#690` (2026-09-02, OPEN) "capability_map_v2 fails to map capabilities properly" —
+*"The v2 Capability Map fails to remove the source events and populate the mapped capabilities for a
+source device. This results in the exclude/include list on a composite device to block all mapped
+events and the device test to show original source capabilities."*
+08-28부터 우리가 관측한 "`device N test`에 `Screenshot`/`QuickAccess` 박스가 안 뜬다"와
+09-09에 확인한 "`Capabilities`에 `Guide`만 있다"가 바로 이것이다. **pastaq의 "다 나와야 한다"도
+맞았고 우리 관측도 맞았다** — v2 맵의 알려진 버그이고, 그가 PR 664를 닫은 그날 직접 등록했다.
+**새 이슈로 내지 말고 `#690`에 확인 데이터를 붙일 것.**
+
+| # | 후보 | 0.79.2 검증 근거 | 판단 |
+|---|---|---|---|
+| 1 | 타겟 `run()` 루프 영구 사망 | `target/mod.rs:551-559` — `receive_commands` 에러가 `log::debug!` 한 줄 뒤 `break`, `stop()` 후 `Ok(())`. 위로 전파도 재생성도 없음 | 제출 |
+| 2 | `unique` 기본값 `true` | `manager.rs:1036` `unwrap_or(true)` | 단독 제출 안 함 — 의도된 설계. 4번 본문에 포함 |
+| 3 | `filtered_events` 무시 | `CapabilityMapConfigV1`/`V2` 어디에도 필드 없음, `capability_map_v2.json` 스키마에도 없음. 그런데 셰어된 capability map YAML **36개**가 이 키를 갖고 있음 | 제출 (PR로도 가능) |
+| 4 | 동명 config 중복 로드 | `manager.rs:1673-1697` — 파일명·`name:` 어느 쪽으로도 dedup 없이 전부 `push` | 제출 |
+| 5 | `REL_WHEEL`/`REL_HWHEEL` 축 붕괴 | 입력 `evdev.rs:83`이 `InputValue::Float`로 축 소실 → `:482`에서 `Mouse::Wheel`로 합류 → `:723-726`이 두 코드 모두에 출력 → `:984` Float 분기는 code 무관 | 제출 |
+| 6 | 타겟이 선언 안 한 capability는 조용히 드롭 | `composite_device/targets.rs:303-312` | 제출 (본문에서 `#690`과 구분할 것) |
+
+**전례**: `#531`(closed) "Deck target fails to run"의 로그에 `Error processing received command:
+Target device stopped`가 DEBUG로 찍힌 뒤 타겟이 멈추는 형태가 그대로 보인다 — 후보 1의 실사례다.
+
+**Zotac config 차이 3건(§11)은 새 이슈가 아니라 `#655`로.**
+`#655` "Zotac gaming zone QAM and Guide /Steam Button don't work"가 **OPEN**이다. 패키지판 config에
+`*/input0` xpad entry가 없어 표준 버튼이 죽는 문제는 그 이슈에 실사용자 데이터로 붙이는 게 맞다.
+
+**미착수**: 실제 이슈 본문(영문) 작성 및 제출. 위 6건 중 5건 + `#690` 코멘트 + `#655` 코멘트.
+
+### 13. 다음 세션 TODO (09-08 목록에서 갱신)
 
 1. ~~리부트 후 컴포짓 1개 + 전 버튼 정상인지 확인~~ → **완료(이 세션). 정상.**
 2. ~~다이얼 실동작 확인~~ → **완료(이 세션).** 볼륨/밝기로 동작, capability 매핑은 no-op.
@@ -362,9 +398,9 @@ PR은 닫혔지만 upstream은 0.79.0에서 자체 Zotac config를 냈고, 우�
    항목 존재 확인. 바이너리 VDF이고 Steam 실행 중엔 덮어써지므로 직접 편집하지 않았다. 사용자가
    Steam 라이브러리에서 우클릭 → 관리 → 비-Steam 게임 제거로 지워야 함. (스크립트를 옮겼으므로
    지금 실행하면 실패한다 — 어차피 hidraw2가 root 전용 + InputPlumber 점유라 동작 불가)
-4. upstream 이슈 후보 **5건** 정리해서 올릴지 결정(§4에서 1건 추가됨). §11의 upstream 패키지
-   config 차이 3건도 같이 올릴지 검토 — 특히 `*/input0` xpad entry 누락은 실사용자에게 바로
-   "표준 버튼이 안 된다"로 나타나는 문제다.
+4. ~~upstream 이슈 후보 정리~~ → **정리 완료(§12).** 6건 전부 0.79.2로 검증, 중복 검색까지 마침.
+   **남은 것은 실제 제출**: 신규 이슈 5건(후보 1·3·4·5·6) + `#690`에 확인 코멘트 + `#655`에
+   패키지 config의 `*/input0` 누락 보고. 영문 본문은 아직 안 씀.
 5. ~~벤더 게임패드 entry의 `phys_path: "*/input1"` 제약 제거 검토~~ → **완료(이 세션). 제거함.**
    근거: `has_matching_evdev`의 name 매칭은 `glob_match` 전체 문자열 매칭이라
    (`src/config/mod.rs:855-861`) 이 entry의 두 이름 대안이 xpad 노드(`ZOTAC Gaming Zone`)와는
