@@ -395,8 +395,9 @@ see "After the vendor driver landed"; the hidraw scancodes are unchanged):
   `mapping_type: evdev: chord` to `Screenshot`/`Guide` respectively — these are the only two buttons
   in this device's capability_map with real, special-cased evdev output on the `xbox-elite` target
   (`event_codes_from_capability` in `src/input/event/evdev.rs`, `write_event` in
-  `src/input/target/xpad.rs`); a `unified_gamepad`/DBus target is not attached for this device, so
-  anything mapped to `QuickAccess2` or `Keyboard` here is a silent no-op. **Note**: consuming these
+  `src/input/target/xpad.rs`); anything mapped to `QuickAccess2` or `Keyboard` here produces nothing
+  in practice — but see "Why `QuickAccess2`/`Keyboard` do nothing here" below for the actual reason,
+  which is *not* "no DBus target is attached". **Note**: consuming these
   chords means they no longer pass through to the desktop/gamescope session's own keyboard target,
   so KDE's `Meta+D` "Show Desktop" shortcut stops firing in desktop mode too (capability_map
   translation doesn't distinguish session type). This tradeoff was deliberately accepted for this
@@ -519,6 +520,26 @@ upstream's `QuickAccess2`/`Keyboard` only because those two capabilities still p
 output on the `xbox-elite` target (`event_codes_from_capability` returns an empty vec; `xpad.rs`'s
 `write_event` only special-cases `QuickAccess` and `Screenshot`).
 
+**Why `QuickAccess2`/`Keyboard` do nothing here** (corrected 2026-09-09 — an earlier version of this
+document said "no DBus target is attached", which is wrong):
+
+- A DBus target **is** attached. The composite device's `DbusDevices` property lists
+  `/org/shadowblip/InputPlumber/devices/target/dbus0`.
+- `GamepadButton::QuickAccess2` and `GamepadButton::Keyboard` **do** have DBus translations —
+  `src/input/event/dbus.rs:197-198` maps them to `Action::Quick2` (`"ui_quick2"`) and
+  `Action::Keyboard`. So the mapping is not dead code in general, and pastaq's review claim that "it
+  is not a no-op" was right in principle.
+- What actually stops them is `InterceptMode`. `CompositeDevice::write_event`
+  (`src/input/composite_device/mod.rs:1080-1105`) only forwards ordinary gamepad events to DBus
+  targets when the intercept mode is `Always` or `GamepadOnly`; otherwise they go to the evdev
+  targets alone. This device sits at `InterceptMode = 0` (none), so those two capabilities reach
+  neither an evdev code nor a DBus signal.
+- Unexplained: the 2026-08-27 hardware test ran with OpenGamepadUI actually running (both
+  `opengamepadui --overlay-mode` and the `gamescope-session-ogui-steam` Gaming Mode session) and
+  still saw no reaction, so something was not enabling intercept mode then either. Whatever the
+  cause, on this machine's normal runtime state the practical conclusion stands — but state it as
+  "intercept mode is off", not as "there is no DBus target".
+
 **Paddles no longer need the hidraw workaround.** `KEY_HOME`/`KEY_END` arrive from the firmware
 without anything writing a mapping first, and the kernel now exposes the remap knobs directly at
 `/sys/.../1-4:1.3/0003:1EE9:1590.0003/btn_m{1,2}/remap` (plus `btn_a/remap`, `dpad_*/remap`, …), which
@@ -595,5 +616,9 @@ instruction is withdrawn.
 - Same-named configs in `/etc` and `/usr/share` are both loaded with no dedup, so an override that is
   a *subset* of the packaged config silently produces duplicate composite devices.
 - The `REL_WHEEL`/`REL_HWHEEL` → single `Mouse::Wheel` collapse noted earlier in this document is
-  still present in 0.79.0 and now actually matters, since this device finally has a real
-  horizontal-axis source (the left dial).
+  still present in 0.79.0. This device finally has a real horizontal-axis source (the left dial),
+  though its events are dropped before any target sees them, so the collapse stays latent here.
+- A capability_map rule that translates into a capability **no attached target declares** is dropped
+  by `TargetDeviceSet::write_event` (`src/input/composite_device/targets.rs:303-312`) with a single
+  `trace` line — no warning, no config-load-time check. Upstream's own packaged `50-zotac-zone.yaml`
+  ships exactly this (dial rules with no dial-capable target), so it is not a rare user mistake.

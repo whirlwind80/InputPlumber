@@ -2,9 +2,14 @@
 
 ## 상태 요약 (최신, 2026-09-09)
 
+**닫힌 PR 664/668 리뷰 쟁점을 코멘트 원문으로 재대조 완료 — 남은 진짜 이견은 HOME 버튼 두 개뿐이고,
+그것도 "OGUI intercept mode를 전제하느냐"의 차이다.** 이 과정에서 **우리 쪽 서술 2건이 틀렸음이
+드러나 정정**했다(DBus 타겟은 실제로 붙어 있다; `QuickAccess2`/`Keyboard`가 안 먹는 이유는
+`InterceptMode = 0`이다). 상세는 §9-11.
+
 **리부트 검증 완료 (TODO 1) — 리부트 후에도 컴포짓 1개, 소스 8개 전부 정상, 게임모드에서 사용자
 확인 "문제 없음".** 노드 번호는 09-08 대비 전부 바뀌었지만(이름/`phys_path` 매칭이라 무관) 구성은
-동일. 09-08의 중복 컴포짓/xpad 누락 문제는 재발하지 않았다. 상세는 "★ 2026-09-09 세션" §9 참고.
+동일. 09-08의 중복 컴포짓/xpad 누락 문제는 재발하지 않았다. 상세는 "★ 2026-09-09 세션" §8 참고.
 
 
 **다이얼 검증 완료 (TODO 2) — 다이얼은 볼륨(왼쪽)/화면 밝기(오른쪽)로 동작하고, `zone1`의
@@ -1186,7 +1191,7 @@ event/evdev.rs` → `GamepadButton::Keyboard => vec![]`, `QuickAccess2 => vec![]
 가상 장치: `Microsoft X-Box One Elite 2 pad` = event21/js2, `InputPlumber Mouse` = event22,
 `InputPlumber Keyboard` = event16. (노드 번호는 리부트마다 바뀜)
 
-### 9. 리부트 검증 (TODO 1) — 완료, 정상
+### 8. 리부트 검증 (TODO 1) — 완료, 정상
 
 리부트 직후 실측:
 
@@ -1215,7 +1220,66 @@ xpad 소스 누락, raw 컨트롤러 노출은 재부팅 후에도 재발하지 
 자체 에뮬레이션 패드**이지 중복 InputPlumber 컨트롤러가 아니다. 09-08의 "Xbox Elite 2가 2개" 증상과
 혼동하지 말 것.
 
-### 10. 다음 세션 TODO (09-08 목록에서 갱신)
+### 9. ★ 닫힌 PR 664/668 리뷰 쟁점 최종 대조 (GitHub 코멘트 원문 재조회)
+
+`gh api repos/ShadowBlip/InputPlumber/issues/{664,668}/comments`로 코멘트 전문(664: 7건,
+668: 4건)을 다시 받아 현재 런타임과 대조했다. 코드 변경 없음(문서만).
+
+| pastaq의 주장 (날짜) | 현재 상태 | 판정 |
+|---|---|---|
+| ZOTAC → `Guide` | F16 → `Guide` | ✅ 채택 |
+| MORE → `QuickAccess` (08-26, 08-28 재주장) | F17 → `QuickAccess` (09-08에 `Guide`에서 고침) | ✅ 채택 |
+| HOME 짧게 → `QuickAccess2` | F18 → `Screenshot` | ❌ 의도적 |
+| HOME 길게 → `Keyboard` | F19 → `Guide` | ❌ 의도적 |
+| "드라이버 유/무 매핑이 1:1로 같아야" (08-28) | 벤더 드라이버가 버튼당 F-키 하나씩 보내 조합키 소멸 → chord entry 2개 삭제 | ✅ 자연 해소 |
+| 터치패드 entry 제거 (08-27) | 제거 유지 | ✅ 채택 |
+| `unique: false` | 전 entry 적용 | ✅ 채택 |
+| "다이얼은 드라이버 정리할 때 다시 보겠다" (08-27) | 드라이버 도착·전용 노드 생김, **매핑은 여전히 무동작**(§2) | ⚠️ 미해결 |
+| "capability map 항목은 전부 composite capabilities에 들어간다" (08-28) | `Capabilities`에 `Guide`만 존재, `Screenshot`/`QuickAccess`/`Paddle` 없음 | ❌ 우리 관측이 맞음 |
+| "드라이버 없으면 게임패드가 enumerate 안 된다" (09-02, 664 종료 사유) | `hid-generic` 시절에도 xpad 노드 존재했고 지금도 진짜 입력은 xpad | ⚠️ 재현 안 됨 |
+| 드라이버 있으면 게임패드가 `*/input3` | 여기선 `*/input0`(xpad) + `*/input1`(벤더) | ⚠️ 재현 안 됨 |
+| PR 668 대신 드라이버를 OGC에 싣겠다 (09-03) | 드라이버가 패들 매핑 직접 적용, `KEY_HOME`/`KEY_END` 네이티브 도착 | ✅ **그의 판단이 옳았음** |
+
+**`Capabilities` 항목의 해소**: pastaq가 인용한 `composite_device/mod.rs` L233-256은 **device-wide
+`capability_map_id`** 경로(`load_capability_map` → `translatable_capabilities`)다. 이 config는 그
+최상위 키를 쓰지 않고 **per-source `capability_map_id`**만 쓰므로 그 코드가 아예 안 탄다. 양쪽 다
+맞는 말이었고 서로 다른 경로를 보고 있었다.
+
+### 10. ⚠️ 이번 대조에서 드러난 우리 쪽 오류 2건 (09-08 §5.5 서술 정정)
+
+**(a) "이 기기 config엔 DBus 타겟이 없다"는 틀렸다.** 런타임 확인:
+`DbusDevices = ["/org/shadowblip/InputPlumber/devices/target/dbus0"]` — **붙어 있다.**
+
+**(b) 따라서 `QuickAccess2`/`Keyboard`가 "죽은 코드"라는 것도 조건부다.**
+`src/input/event/dbus.rs:197-198`에 `QuickAccess2 → Action::Quick2("ui_quick2")`,
+`Keyboard → Action::Keyboard` 매핑이 **실재한다.** pastaq의 "It is not a no-op"은 원리상 옳았다.
+
+무동작인 **진짜 이유는 `InterceptMode`**다. `CompositeDevice::write_event`
+(`composite_device/mod.rs:1080-1105`)는 intercept mode가 `Always`/`GamepadOnly`일 때만 일반
+게임패드 이벤트를 DBus 타겟으로 보낸다. 이 기기는 `InterceptMode = 0`이라 evdev 코드도 DBus
+시그널도 안 나온다. **실용적 결론은 그대로지만, 근거를 "DBus 타겟이 없어서"가 아니라
+"intercept mode가 꺼져 있어서"로 말할 것.** CLAUDE.md 두 군데를 이에 맞춰 정정했다.
+
+**미해결**: 08-27 실기기 테스트는 OGUI를 실제로 띄운 상태(`opengamepadui --overlay-mode`,
+`gamescope-session-ogui-steam`)에서도 무반응이었다. 그때 왜 intercept mode가 안 켜졌는지는
+여전히 설명되지 않았다. HOME 매핑을 다시 논의하게 되면 여기부터 파야 한다.
+
+### 11. upstream 패키지 config와 지금 남은 차이 3가지
+
+PR은 닫혔지만 upstream은 0.79.0에서 자체 Zotac config를 냈고, 우리 `/etc` override와 이렇게 다르다:
+
+1. **`*/input0` xpad entry가 upstream엔 없다** — 없으면 ABXY·스틱·트리거가 전부 죽는다(09-08 실측).
+   이 하드웨어에 대해선 우리 쪽이 정확하다.
+2. **`QuickAccess2`/`Keyboard`를 쓴다** — §10에 따라 OGUI intercept 없이는 HOME 두 개가 무동작.
+3. **다이얼 매핑이 양쪽 다 죽어 있다** — upstream도 `target_devices`가 `xbox-elite`/`mouse`/
+   `keyboard`뿐이라 `Gamepad:Dial:*`을 받을 타겟이 없다.
+
+**종합**: 닫힌 두 PR의 쟁점은 대부분 사후 해소됐다. 매핑 컨벤션 논쟁은 서로 다른 커널을 보고 있던
+것이고(벤더 드라이버 하드웨어에서는 그가 옳다), 패들은 그의 판단대로 드라이버가 해결했고,
+터치패드·`unique: false`는 그대로 채택했다. **남은 진짜 이견은 HOME 버튼 두 개뿐이며, 그것도
+"OGUI intercept를 전제하느냐"의 차이라 옳고 그름이 아니라 전제의 차이다.**
+
+### 12. 다음 세션 TODO (09-08 목록에서 갱신)
 
 1. ~~리부트 후 컴포짓 1개 + 전 버튼 정상인지 확인~~ → **완료(이 세션). 정상.**
 2. ~~다이얼 실동작 확인~~ → **완료(이 세션).** 볼륨/밝기로 동작, capability 매핑은 no-op.
@@ -1226,7 +1290,9 @@ xpad 소스 누락, raw 컨트롤러 노출은 재부팅 후에도 재발하지 
    항목 존재 확인. 바이너리 VDF이고 Steam 실행 중엔 덮어써지므로 직접 편집하지 않았다. 사용자가
    Steam 라이브러리에서 우클릭 → 관리 → 비-Steam 게임 제거로 지워야 함. (스크립트를 옮겼으므로
    지금 실행하면 실패한다 — 어차피 hidraw2가 root 전용 + InputPlumber 점유라 동작 불가)
-4. upstream 이슈 후보 **5건** 정리해서 올릴지 결정(§4에서 1건 추가됨).
+4. upstream 이슈 후보 **5건** 정리해서 올릴지 결정(§4에서 1건 추가됨). §11의 upstream 패키지
+   config 차이 3건도 같이 올릴지 검토 — 특히 `*/input0` xpad entry 누락은 실사용자에게 바로
+   "표준 버튼이 안 된다"로 나타나는 문제다.
 5. ~~벤더 게임패드 entry의 `phys_path: "*/input1"` 제약 제거 검토~~ → **완료(이 세션). 제거함.**
    근거: `has_matching_evdev`의 name 매칭은 `glob_match` 전체 문자열 매칭이라
    (`src/config/mod.rs:855-861`) 이 entry의 두 이름 대안이 xpad 노드(`ZOTAC Gaming Zone`)와는
