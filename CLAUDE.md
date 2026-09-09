@@ -2,7 +2,8 @@
 
 This file provides guidance to Claude Code (claude.ai/code) when working with code in this repository.
 
-> **Fork-only file — do not upstream.** This file and `handoff.md` live only on the `claude` branch
+> **Fork-only file — do not upstream.** This file, `handoff.md` and `handoff-archive.md` live only
+> on the `claude` branch
 > of this fork (whirlwind80/InputPlumber) and must never be merged, cherry-picked, or otherwise
 > included in a PR/branch destined for `upstream` (ShadowBlip/InputPlumber). They contain
 > machine-specific dev notes, not project documentation. Feature/PR branches (e.g.
@@ -251,12 +252,19 @@ done — see "After the vendor driver landed" below for what actually changed, w
 hardware's evdev topology, the F16-F19 button codes, and which node the real gamepad data comes from
 are all different now. Sections written before that date describe the old `hid-generic` world and
 are kept only for history; where they conflict with "After the vendor driver landed", that section
-wins. Full background on the (still closed) PRs — the review back-and-forth, the closing comments,
-exact reasoning — is in `handoff.md`'s 2026-09-04 session
-(tracked on this fork's `claude` branch only — see the fork-only note at the top; it is *not*
-untracked) — that file is a running session-to-session handoff log (current PR/review status,
-in-progress experiments, next-session TODOs); durable facts about the codebase or this device belong
-here instead.
+wins.
+
+Two companion files sit alongside this one, both tracked on this fork's `claude` branch only (see
+the fork-only note at the top — they are *not* untracked):
+
+- **`handoff.md`** — the running session-to-session log: current state, in-progress experiments,
+  next-session TODOs. It covers the vendor-driver world only (2026-09-08 onward).
+- **`handoff-archive.md`** — the 2026-08-25 … 09-04 sessions, split off on 2026-09-09: the
+  `hid-generic`-era hardware notes and the full review back-and-forth, closing comments and exact
+  reasoning for the two closed PRs. Historical; do not cite it for current facts. How those review
+  points actually resolved is tabulated in `handoff.md`'s 2026-09-09 session instead.
+
+Durable facts about the codebase or this device belong here in CLAUDE.md rather than in either.
 
 ### Development environment on this machine
 
@@ -294,8 +302,8 @@ This checkout runs inside a toolbox (`inputplumber-dev`). Consequences:
   hidraw. Their mapping ships empty, so the firmware sends nothing for them until it is written.
 
 Both branches/commits remain useful as local reference (the config fixes, the dial protocol, the
-paddle hidraw implementation) even though neither is headed upstream anymore — see handoff.md's
-2026-09-04 session for the closing reasoning in full.
+paddle hidraw implementation) even though neither is headed upstream anymore — see
+handoff-archive.md's 2026-09-04 session for the closing reasoning in full.
 
 ### What each fix currently depends on
 
