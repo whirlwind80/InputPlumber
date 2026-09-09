@@ -1,6 +1,15 @@
 # InputPlumber Zotac Gaming Zone 버그 수정 - 작업 인계 문서
 
-## 상태 요약 (최신, 2026-09-08)
+## 상태 요약 (최신, 2026-09-09)
+
+**다이얼 검증 완료 (TODO 2) — 다이얼은 볼륨(왼쪽)/화면 밝기(오른쪽)로 동작하고, `zone1`의
+`Left/RightStickDial` 매핑은 런타임에서 전부 버려지는 no-op이다.** 원인은 타겟 라우팅이 capability
+기준 필터링이고(`composite_device/targets.rs:303-312`) `xbox-elite`/`mouse`/`keyboard` 어느
+타겟도 `Gamepad:Dial:*`을 선언하지 않기 때문. 하드웨어·벤더 드라이버·config는 전부 정상.
+upstream 패키지 config도 같은 죽은 매핑을 갖고 있다. 상세는 "★ 2026-09-09 세션" 참고.
+**리부트 검증(TODO 1)은 아직 미착수 — 다음 세션 최우선.**
+
+## 상태 요약 (2026-09-08)
 
 **★★★ 벤더 커널 드라이버 `zotac_zone_hid`가 드디어 OGC에 실려서 이 기기에 들어왔다 (Bazzite
 44.20260907, 커널 7.2.3-ogc3.1, InputPlumber 0.78.0-5 → 0.79.0-4). 예고돼 있던 "실기기 재검증
@@ -1090,6 +1099,97 @@ event/evdev.rs` → `GamepadButton::Keyboard => vec![]`, `QuickAccess2 => vec![]
    `v0.79.0` 태그로 재확인했고 결론은 같았지만, 앞으로도 이러면 위험하다. `upstream/main`(현재
    `0ca9869`, 0.79.1)을 받아서 로컬 `main`을 동기화해둘 것. **단 `claude` 브랜치에 머지하지 말 것**
    (문서 파일이 upstream으로 새는 걸 막는 이 리포의 규칙).
+7. 미착수로 계속 남아있는 것: PR 코드 라인별 설명 듣기.
+
+---
+
+## ★ 2026-09-09 세션 — 다이얼 실동작 검증 (TODO 2), 결론: capability 매핑은 no-op
+
+### 0. 결과 요약
+
+**다이얼은 "볼륨(왼쪽)/화면 밝기(오른쪽)"로만 동작한다. `zone1`의 `Left/RightStickDial` 매핑은
+문법상 맞지만 런타임에서 완전히 버려진다 — 하드웨어·드라이버·설정이 아니라 타겟 쪽이 막힌 것.**
+코드 변경 없음. 리부트 검증(TODO 1)은 이 세션에서 미착수.
+
+### 1. 두 경로 중 하나만 살아 있다
+
+| 경로 | 결과 |
+|---|---|
+| rid=3 → 벤더 드라이버 → `Dials`(event7)의 `REL_HWHEEL`/`REL_WHEEL` → `zone1` → `Left/RightStickDial` | ❌ 버려짐 |
+| rid=3 → HID 코어 → `Keyboard`(event3)의 `KEY_VOLUMEUP`/`KEY_BRIGHTNESSUP` → 가상 키보드(event16) 통과 | ✅ 볼륨/밝기 |
+
+`sudo libinput debug-events`로 실측: 왼쪽 다이얼 3칸 → `event16 KEY_VOLUMEUP` 3회, 오른쪽 3칸 →
+`event16 KEY_BRIGHTNESSUP` 3회. **`InputPlumber Mouse`(event22)에서는 스크롤이 단 하나도 안 나옴.**
+
+### 2. ★ 버려지는 지점 (코드 + 런타임 양쪽 확정)
+
+- `src/input/composite_device/targets.rs:303-312` — `TargetDeviceSet::write_event()`는
+  `target_devices_by_capability`에서 해당 capability를 조회하고, **없으면 `trace` 한 줄 남기고
+  `return`한다.** 타겟 라우팅은 capability 기준 필터링이다.
+- 런타임 `TargetCapabilities`(227개)에 **`Gamepad:Dial:*`이 하나도 없다.**
+  - `xbox-elite`: `create_virtual_device()`가 `with_keys` + abs 축만 부르고 **relative 축을 아예
+    선언하지 않는다**(`src/input/target/xpad.rs:148-156`). `get_capabilities()` 목록(L181-224)에도
+    `Gamepad::Dial` 없음.
+  - `mouse`/`keyboard` 타겟: `Mouse::*` / `Keyboard::*`만 선언.
+- 그래서 다이얼 이벤트는 번역 직후 소멸한다. 게다가 `capability_map_id: zone1`이 붙어 있어서 raw
+  `Mouse:Wheel`로도 안 나간다(= 가상 마우스 스크롤도 없음). 실측과 정확히 일치.
+
+**주의: `mouse` 타겟의 `translate_event()`는 제네릭이라(`EvdevEvent::from_native_event`)
+`Gamepad::Dial` → `REL_HWHEEL`/`REL_WHEEL`로 번역할 능력이 있고 가상 마우스도 그 축을 선언한다
+(`mouse.rs:107-111`). 즉 "번역기는 가능한데 라우터가 이벤트를 안 넘겨준다"는 구조 —
+`translate_event`만 읽고 "될 것"이라 판단하면 틀린다. 반드시 `targets.rs`의 라우팅을 볼 것.**
+
+### 3. 하드웨어/드라이버는 완전 정상 (확인 근거)
+
+- HID debugfs(`/sys/kernel/debug/hid/0003:1EE9:1590.0001/events`, grab 무관·비침습)로 rid=3 실측:
+  왼쪽 CW 3칸 = `03 00 00 08` ×3, 오른쪽 = `03 00 00 01`/`02`/`01`. CLAUDE.md의 다이얼 비트맵
+  (`0x01` R-CW / `0x02` R-CCW / `0x08` L-CW / `0x10` L-CCW)과 정확히 일치.
+- 벤더 드라이버 소스(`zotac-zone-hid-core.c:91-101`)가 rid=3을 `wheel_input`에 `REL_WHEEL`/
+  `REL_HWHEEL`로 정상 출력하고, `Dials` 노드는 `EV=5`, `REL=140`(= `REL_HWHEEL`+`REL_WHEEL`)만
+  선언한다. 09-08의 게임패드 노드 같은 "선언만 하고 안 보내는 껍데기"가 **아니다.**
+- `/etc`의 `zone_type1.yaml` L70-89 다이얼 규칙도 정상.
+
+### 4. upstream도 같은 문제를 갖고 있다 (이슈 후보 추가)
+
+패키지판 `/usr/share/inputplumber/devices/50-zotac-zone.yaml`의 `target_devices`도
+`xbox-elite`/`mouse`/`keyboard`이고, 패키지판 `zone_type1.yaml`에도 동일한
+`REL_HWHEEL→LeftStickDial` / `REL_WHEEL→RightStickDial` 규칙이 있다. **즉 상류 설정에서도 이
+다이얼 매핑은 죽은 코드다.** TODO 4의 upstream 이슈 후보 목록에 5번째 항목으로 추가할 것:
+"capability_map이 어떤 타겟도 선언하지 않은 capability로 번역하면 `trace` 로그 한 줄만 남기고
+조용히 버려진다 — 설정 로드 시점에 경고할 수 있는 종류의 오류다."
+
+### 5. 판단 — 현 상태 유지 권고
+
+- 볼륨/밝기는 핸드헬드에서 유용한 기본 동작이고, 지금 실제로 잘 된다.
+- 다이얼을 게임패드로 보내려면 `xbox-elite` 타겟에 relative 축을 추가하는 upstream 변경이 필요한데,
+  실제 Xbox 컨트롤러에 없는 축이라 받아들여지기 어렵다.
+- **`Dials` 소스 entry 자체는 반드시 유지할 것** — 빼면 패키지 config의 superset이 깨져서 중복
+  컴포짓 디바이스가 다시 생긴다(09-08 세션 참고).
+
+### 6. 헛수고한 것 (다음에 반복하지 말 것)
+
+**`sudo busctl --system monitor org.shadowblip.InputPlumber`로 번역된 이벤트를 보려는 시도는
+안 된다.** 캡처 2839줄에 shadowblip 트래픽이 **0건**이었다(대조군으로 누른 ZOTAC 버튼조차 안 잡힘).
+컴포짓 디바이스에 `dbus0` 타겟이 `DbusDevices`로 붙어 있긴 하지만 실제로 시그널을 내보내지 않는다
+(`InterceptMode`가 0이라 일반 이벤트는 DBus로 안 감 — `composite_device/mod.rs:1080-1105`).
+번역 결과를 보고 싶으면 `LOG_LEVEL=trace`로 데몬을 띄우거나, 가상 타겟 노드를 직접 `evtest`할 것.
+
+### 7. 이 세션의 baseline (리부트 전, 정상 상태)
+
+컴포짓 1개(`CompositeDevice0` "Zotac Zone"), 소스 8: `hidraw2`, `event7`(Dials), `event10`(벤더
+게임패드), `event3`(Keyboard), `iio:device0`, LED×2, `event6`(xpad).
+가상 장치: `Microsoft X-Box One Elite 2 pad` = event21/js2, `InputPlumber Mouse` = event22,
+`InputPlumber Keyboard` = event16. (노드 번호는 리부트마다 바뀜)
+
+### 8. 다음 세션 TODO (09-08 목록에서 갱신)
+
+1. **[미착수, 최우선] 리부트 후 컴포짓 1개 + 전 버튼 정상인지 확인** — 09-08은 재시작만 검증했음.
+2. ~~다이얼 실동작 확인~~ → **완료(이 세션).** 볼륨/밝기로 동작, capability 매핑은 no-op.
+3. `~/zotac-zone-tools/zotac-zone-paddles` 및 Steam 비-Steam 게임 등록 정리(이제 불필요).
+4. upstream 이슈 후보 **5건** 정리해서 올릴지 결정(§4에서 1건 추가됨).
+5. 벤더 게임패드 entry의 `phys_path: "*/input1"` 제약 제거 검토 — 우선순위 낮음.
+6. `upstream/main`을 받아 로컬 `main` 동기화(체크아웃 0.78.1 vs 설치 0.79.0-4 불일치).
+   **`claude` 브랜치에 머지 금지.**
 7. 미착수로 계속 남아있는 것: PR 코드 라인별 설명 듣기.
 
 ---
