@@ -2,6 +2,11 @@
 
 ## 상태 요약 (최신, 2026-09-09)
 
+**리부트 검증 완료 (TODO 1) — 리부트 후에도 컴포짓 1개, 소스 8개 전부 정상, 게임모드에서 사용자
+확인 "문제 없음".** 노드 번호는 09-08 대비 전부 바뀌었지만(이름/`phys_path` 매칭이라 무관) 구성은
+동일. 09-08의 중복 컴포짓/xpad 누락 문제는 재발하지 않았다. 상세는 "★ 2026-09-09 세션" §9 참고.
+
+
 **다이얼 검증 완료 (TODO 2) — 다이얼은 볼륨(왼쪽)/화면 밝기(오른쪽)로 동작하고, `zone1`의
 `Left/RightStickDial` 매핑은 런타임에서 전부 버려지는 no-op이다.** 원인은 타겟 라우팅이 capability
 기준 필터링이고(`composite_device/targets.rs:303-312`) `xbox-elite`/`mouse`/`keyboard` 어느
@@ -1181,9 +1186,38 @@ event/evdev.rs` → `GamepadButton::Keyboard => vec![]`, `QuickAccess2 => vec![]
 가상 장치: `Microsoft X-Box One Elite 2 pad` = event21/js2, `InputPlumber Mouse` = event22,
 `InputPlumber Keyboard` = event16. (노드 번호는 리부트마다 바뀜)
 
-### 8. 다음 세션 TODO (09-08 목록에서 갱신)
+### 9. 리부트 검증 (TODO 1) — 완료, 정상
 
-1. **[미착수, 최우선] 리부트 후 컴포짓 1개 + 전 버튼 정상인지 확인** — 09-08은 재시작만 검증했음.
+리부트 직후 실측:
+
+| 항목 | 결과 |
+|---|---|
+| 컴포짓 디바이스 | 1개 (`CompositeDevice0`) |
+| 소스 8 | `hidraw2`, `event13`(xpad, `*/input0`), `event8`(Keyboard), `event9`(Dials), `event11`(벤더 게임패드), `iio:device0`, LED×2 |
+| 터치패드(`event10`) | 의도대로 미grab |
+| 가상 컨트롤러 | `Microsoft X-Box One Elite 2 pad`(event21/js2) 1개 |
+| 타겟 | gamepad0 + keyboard0 + mouse0 |
+
+사용자가 게임모드에서 확인 후 "문제 없어 보입니다". **09-08 세션에서 겪은 중복 컴포짓 디바이스,
+xpad 소스 누락, raw 컨트롤러 노출은 재부팅 후에도 재발하지 않았다.**
+
+노드 번호는 09-08 대비 전부 이동했다(`event6→13`, `event3→8`, `event7→9`, `event10→11`,
+가상 마우스 `22→20`, 가상 키보드 `16→19`). 이름/`phys_path` 기반 매칭이라 영향 없음이 실증됐다.
+**핸드오프 문서에 노드 번호를 적을 때는 항상 "이 시점 값"임을 전제할 것.**
+
+`/etc` override 3개(`devices.d/50-zotac-zone.yaml`, `capability_maps.d/zone_type1.yaml`,
+`capability_maps.d/zone_type1_dial.yaml`) 전부 리부트 후에도 존재. 단
+**`zone_type1_dial.yaml`(id `zone1_dial`)은 어느 `source_devices` entry도 참조하지 않는 잔재**다
+— 다이얼 규칙은 `zone_type1.yaml` 안으로 들어갔고, §2에 따라 그 매핑 자체가 no-op이다. 무해하지만
+정리 후보.
+
+게임모드에서 `Microsoft X-Box 360 pad 0`(event25/js3)이 함께 보이는데 이건 **Steam Input이 만드는
+자체 에뮬레이션 패드**이지 중복 InputPlumber 컨트롤러가 아니다. 09-08의 "Xbox Elite 2가 2개" 증상과
+혼동하지 말 것.
+
+### 10. 다음 세션 TODO (09-08 목록에서 갱신)
+
+1. ~~리부트 후 컴포짓 1개 + 전 버튼 정상인지 확인~~ → **완료(이 세션). 정상.**
 2. ~~다이얼 실동작 확인~~ → **완료(이 세션).** 볼륨/밝기로 동작, capability 매핑은 no-op.
 3. `~/zotac-zone-tools/zotac-zone-paddles` 및 Steam 비-Steam 게임 등록 정리(이제 불필요).
 4. upstream 이슈 후보 **5건** 정리해서 올릴지 결정(§4에서 1건 추가됨).
