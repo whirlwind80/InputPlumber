@@ -28,6 +28,10 @@ source_devices:
       product_id: 0x1590
       interface_num: 3
     unique: false
+  # The vendor driver's own gamepad node. It declares a full gamepad but never
+  # emits one; kept because force-feedback upload works here. Matched by name
+  # only, so it is also found where the driver enumerates it on another
+  # interface.
   - group: gamepad
     evdev:
       name: "{ZOTAC Gaming Zone Gamepad,Zotac Technology Limited ZOTAC GAMING ZONE}"
@@ -36,49 +40,19 @@ source_devices:
       handler: event*
     capability_map_id: zone1
     unique: false
-    # This entry deliberately carries no phys_path. It used to pin */input1,
-    # back when it was the only thing stopping a second composite device from
-    # being spawned; `unique: false` now covers that, and the name glob is a
-    # whole-string match (glob_match in has_matching_evdev) that resolves to the
-    # vendor driver's own gamepad node and nothing else on this hardware.
-    # Dropping the constraint also lets the entry find that node on machines
-    # where the vendor driver enumerates it on a different interface - one such
-    # report exists (*/input3), which did not reproduce here.
-    # NOTE: with the zotac_zone_hid vendor driver bound, this node *declares* a
-    # full gamepad capability set but never actually emits button/axis events
-    # (verified with evtest 2026-09-08: pressing ABXY produces nothing here).
-    # The real gamepad stream is the kernel xpad node below. This entry is still
-    # worth keeping: force-feedback effect upload does succeed on this node.
-    # Belt and braces: this node declares BTN_TRIGGER_HAPPY5/6, which the
-    # built-in evdev mapping hard-codes to the same RightPaddle1/2 capability
-    # the keyboard source's KEY_END rule produces, and composite-device
-    # press-state tracking is keyed by capability with no per-source
-    # disambiguation. Since this node was measured to emit nothing at all the
-    # collision cannot currently fire, but excluding it here costs nothing and
-    # keeps the real paddle path (keyboard entry) as the only producer.
+    # BTN_TRIGGER_HAPPY5/6 on this node hard-map to the same RightPaddle1/2 the
+    # keyboard entry produces from KEY_HOME/KEY_END, and press state is tracked
+    # per capability, not per source. Excluded so the keyboard path is the only
+    # producer.
     events:
       exclude:
         - "Gamepad:Button:RightPaddle1"
         - "Gamepad:Button:RightPaddle2"
-  # The kernel xpad node on USB interface 0. This is where the real gamepad
-  # input (ABXY, sticks, triggers, D-pad, shoulders) actually comes from, both
-  # with and without the zotac_zone_hid vendor driver loaded — the vendor
-  # driver's own "Gamepad" node above declares those capabilities but never
-  # emits them. Without this entry the virtual target gets no standard buttons
-  # at all and Steam picks this node up as a second, raw controller.
-  #
-  # Unlike the vendor entry above, this one keeps its phys_path pin. The
-  # interface number in it comes from the device's USB configuration
-  # descriptor, not from the kernel, so it does not move across kernel or
-  # driver updates on this hardware, and it records where the real gamepad was
-  # measured to be. ⚠️ But it is exactly what would go wrong first on a unit
-  # that enumerates xpad on another interface (one */input3 report exists):
-  # if the standard buttons (ABXY/sticks/triggers/D-pad/shoulders) are missing
-  # while the special buttons still work, and Steam shows a second raw "ZOTAC
-  # Gaming Zone" controller, drop this phys_path line before suspecting
-  # anything else. The name is a whole-string glob match and resolves to this
-  # node alone, so removing the pin is safe from an over-matching standpoint -
-  # it just has not been tested on hardware.
+  # The kernel xpad node, where the real ABXY, sticks, triggers, D-pad and
+  # shoulders come from, with or without the vendor driver. Without this entry
+  # the virtual controller has no standard buttons and Steam picks this node up
+  # as a second, raw controller. Drop the phys_path pin first if a unit
+  # enumerates xpad on another interface.
   - group: gamepad
     evdev:
       name: ZOTAC Gaming Zone
@@ -102,19 +76,11 @@ source_devices:
   #    vendor_id: "1ee9"
   #    product_id: "1590"
   #    handler: event*
-  # Removed per pastaq's PR #664 review suggestion: this evdev node carries no
-  # buttons, only pointer motion and a scroll wheel, so nothing needs grabbing
-  # here — verified on hardware that both still work natively when ungrabbed.
-  #- group: mouse
-  #  evdev:
-  #    name: "{ZOTAC Gaming Zone Mouse,Zotac Technology Limited ZOTAC GAMING ZONE Mouse}"
-  #    vendor_id: "1ee9"
-  #    product_id: "1590"
-  #    handler: event*
-  # With the zotac_zone_hid vendor driver bound, the physical dials show up as
-  # their own dedicated evdev device (separate from the touchpad above) — grab
-  # it and translate via zone1's Left/Right Dial mapping. Must NOT share a name
-  # glob with the touchpad/Mouse entry above (see CLAUDE.md dial notes).
+  # Left ungrabbed on purpose: it carries no buttons, and both pointer motion
+  # and scroll work natively.
+
+  # The physical dials, a dedicated node separate from the touchpad above. The
+  # name glob must never also match the Mouse node.
   - group: mouse
     evdev:
       name: "{ZOTAC Gaming Zone Dials,Zotac Technology Limited ZOTAC GAMING ZONE Dials}"
