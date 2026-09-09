@@ -476,13 +476,25 @@ report `phys_path` `*/input1` — `phys_path` no longer distinguishes them, only
 `BTN_SOUTH`…`BTN_THUMBR` + `ABS_X/Y/Z/RX/RY/RZ` + `ABS_HAT0X/Y` + `BTN_TRIGGER_HAPPY1-6` capability
 list, and it even accepts force-feedback effect uploads — but pressing ABXY on it produces **nothing
 at all** (verified with `evtest` on 2026-09-08 with InputPlumber stopped). The physical gamepad
-reports still only arrive on the `xpad` node. So the config needs **both**: `*/input1` for the vendor
-node (useful for FF) and `*/input0` for the xpad node (the actual input). Dropping the `*/input0`
-entry as "redundant now that the vendor driver exposes a gamepad" leaves the virtual controller with
-no standard buttons at all, while Steam happily picks the ungrabbed xpad node up as a *second*
-controller that does work — which reads as "some buttons work, some don't" rather than as a config
-error. pastaq's 2026-09-02 report that the gamepad enumerates on `*/input3` with the driver loaded
-did **not** reproduce here; on this machine it is `*/input0` (xpad) and `*/input1` (vendor).
+reports still only arrive on the `xpad` node. So the config needs **two separate `source_devices`
+entries**: one for the vendor node (worth keeping — force-feedback effect upload does succeed on it)
+and one for the xpad node (the actual input). Dropping the xpad entry as "redundant now that the
+vendor driver exposes a gamepad" leaves the virtual controller with no standard buttons at all,
+while Steam happily picks the ungrabbed xpad node up as a *second* controller that does work — which
+reads as "some buttons work, some don't" rather than as a config error. pastaq's 2026-09-02 report
+that the gamepad enumerates on `*/input3` with the driver loaded did **not** reproduce here; on this
+machine it is `*/input0` (xpad) and `*/input1` (vendor).
+
+⚠️ **The two entries are told apart by name, not by `phys_path`.** The vendor entry's `*/input1`
+pin was removed on 2026-09-09 (verified: composite device count, source list and every button
+unchanged). `has_matching_evdev` (`src/config/mod.rs:855-861`) glob-matches the *whole* name string,
+and the vendor entry's name alternatives — `ZOTAC Gaming Zone Gamepad` and the `hid-generic`-era
+`Zotac Technology Limited ZOTAC GAMING ZONE` — cannot match the xpad node's plain `ZOTAC Gaming
+Zone`, so the entries stay disjoint without the pin. The pin originally existed only to stop a
+second composite device being spawned, which `unique: false` now handles; removing it also lets the
+entry find the vendor node on hardware that enumerates it on another interface (the `*/input3`
+report above). The xpad entry still pins `*/input0` — the same argument would allow dropping it, but
+it has not been tested and standard buttons are what breaks if it goes wrong.
 
 **Button → signal, current values.** The vendor driver hands out clean F16-F19 presses, one per
 button, and the `hid-generic`-era oddities are gone — the physical HOME button no longer emits
@@ -551,7 +563,7 @@ Zone Mouse`, or the touchpad's genuine scroll gets translated into dial events a
 **Why the `/etc` override still exists.** Because both it and the packaged config load
 simultaneously (see "Config loading and overlay"), the override must stay a matching *superset* of
 the packaged `source_devices` list or the uncovered device spawns a second composite device. It also
-still carries three things the packaged config does not: the `*/input0` xpad entry, `unique: false`
+still carries three things the packaged config does not: the xpad (`*/input0`) entry, `unique: false`
 on every entry, and the `Screenshot`/`Guide` targets for HOME. Removing `/etc/inputplumber` wholesale
 would currently *lose* working behaviour, so the old "delete the overrides once the driver lands"
 instruction is withdrawn.

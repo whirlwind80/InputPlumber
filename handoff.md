@@ -1227,7 +1227,17 @@ xpad 소스 누락, raw 컨트롤러 노출은 재부팅 후에도 재발하지 
    Steam 라이브러리에서 우클릭 → 관리 → 비-Steam 게임 제거로 지워야 함. (스크립트를 옮겼으므로
    지금 실행하면 실패한다 — 어차피 hidraw2가 root 전용 + InputPlumber 점유라 동작 불가)
 4. upstream 이슈 후보 **5건** 정리해서 올릴지 결정(§4에서 1건 추가됨).
-5. 벤더 게임패드 entry의 `phys_path: "*/input1"` 제약 제거 검토 — 우선순위 낮음.
+5. ~~벤더 게임패드 entry의 `phys_path: "*/input1"` 제약 제거 검토~~ → **완료(이 세션). 제거함.**
+   근거: `has_matching_evdev`의 name 매칭은 `glob_match` 전체 문자열 매칭이라
+   (`src/config/mod.rs:855-861`) 이 entry의 두 이름 대안이 xpad 노드(`ZOTAC Gaming Zone`)와는
+   절대 겹치지 않는다. 원래 제약 목적(중복 컴포짓 방지)은 `unique: false`가 대신한다.
+   검증: 재시작 후 컴포짓 1개 / 소스 8개 / 노드 구성 / 경고로그 없음 전부 변경 전과 동일,
+   사용자 실기기 버튼 확인 "동작하는 것 같습니다". 얻은 것은 이식성(pastaq가 보고한 `*/input3`
+   토폴로지 대응). 배포본 백업: `/etc/inputplumber/50-zotac-zone.yaml.bak-20260909`
+   (⚠️ `devices.d/` **안에** 백업을 두지 말 것 — 확장자가 `.yaml`이면 중복 config로 로드된다.
+   지금 백업은 디렉터리 밖에 있고 확장자도 `.bak-*`라 안전).
+   **xpad entry의 `*/input0`은 그대로 뒀다** — 같은 논리로 뺄 수 있지만 미검증이고, 잘못되면
+   표준 버튼이 통째로 죽는 쪽이라 사용자 결정 대기.
 6. ~~`upstream/main`을 받아 로컬 `main` 동기화~~ → **완료(이 세션).**
    `git fetch upstream main:main`으로 fast-forward: `23f84b7`(0.78.1) → `8e3c86b`(0.79.2).
    `claude` 브랜치는 손대지 않음. **여전히 체크아웃(claude)은 0.78.1 코드**이므로, 설치판 동작을

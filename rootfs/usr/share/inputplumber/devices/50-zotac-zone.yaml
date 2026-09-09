@@ -33,10 +33,17 @@ source_devices:
       name: "{ZOTAC Gaming Zone Gamepad,Zotac Technology Limited ZOTAC GAMING ZONE}"
       vendor_id: "1ee9"
       product_id: "1590"
-      phys_path: "*/input1"
       handler: event*
     capability_map_id: zone1
     unique: false
+    # This entry deliberately carries no phys_path. It used to pin */input1,
+    # back when it was the only thing stopping a second composite device from
+    # being spawned; `unique: false` now covers that, and the name glob is a
+    # whole-string match (glob_match in has_matching_evdev) that resolves to the
+    # vendor driver's own gamepad node and nothing else on this hardware.
+    # Dropping the constraint also lets the entry find that node on machines
+    # where the vendor driver enumerates it on a different interface - one such
+    # report exists (*/input3), which did not reproduce here.
     # NOTE: with the zotac_zone_hid vendor driver bound, this node *declares* a
     # full gamepad capability set but never actually emits button/axis events
     # (verified with evtest 2026-09-08: pressing ABXY produces nothing here).
